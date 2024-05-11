@@ -139,7 +139,7 @@ client.on('interactionCreate', async interaction => {
   
     if (commandName === 'set-theme') {
       const url = interaction.options.getString('url');
-      const duration = interaction.options.getInteger('duration');
+      const duration = interaction.options.getInteger('duration') || 10; // Use provided duration or default to 10      
       const username = interaction.options.getString('username');
   
       // Check if the user has the ADMINISTRATOR permission
@@ -178,7 +178,7 @@ client.on('interactionCreate', async interaction => {
     const themeSongUrl = await getMemberThemeSong(userId);
   
     if (themeSongUrl) {
-      await playThemeSong(channel, themeSongUrl);
+        await playThemeSong(channel, url, duration, username);
     }
   });
   
