@@ -139,11 +139,18 @@ async function playThemeSong(channel, url, duration = 10, username) {
 function retrieveUserIdByUsername(members, username) {
   console.log("USERNAME ", username);
 
-  // Check if the username is a mention (starts with <@ and ends with >)
-  if (username.startsWith("<@") && username.endsWith(">")) {
-    console.log("PRETTY");
-    const userId = username.slice(2, -1); // Remove the <> and parse the ID
-    return userId;
+  let normalizedUsername;
+
+  if (username) {
+    // Check if the username is a mention (starts with <@ and ends with >)
+    if (username.startsWith("<@") && username.endsWith(">")) {
+      console.log("PRETTY");
+      const userId = username.slice(2, -1); // Remove the <> and parse the ID
+      return userId;
+    }
+
+    // Normalize username if it includes a discriminator (e.g., 'username#1234')
+    normalizedUsername = username.split("#")[0];
   }
 
   // Ensure the member list is an array, regardless of the input data structure
@@ -155,9 +162,6 @@ function retrieveUserIdByUsername(members, username) {
   } else {
     memberList = Object.values(members);
   }
-
-  // Normalize username if it includes a discriminator (e.g., 'username#1234')
-  let normalizedUsername = username.split("#")[0];
 
   // Find member by username or nickname (display name)
   const user = memberList.find((member) => {
