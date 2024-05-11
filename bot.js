@@ -77,33 +77,51 @@ async function setMemberThemeSong(userId, url) {
   }
 }
 
-async function playThemeSong(channel, url) {
-  try {
-    const stream = ytdl(url, { filter: 'audioonly' });
-    const resource = createAudioResource(stream);
-    const player = createAudioPlayer();
-    const connection = await joinVoiceChannel({
-      channelId: channel.id,
-      guildId: channel.guild.id,
-      adapterCreator: channel.guild.voiceAdapterCreator,
-    });
-
-    player.play(resource);
-
-    connection.subscribe(player);
-
-    player.on(AudioPlayerStatus.Idle, () => {
-      connection.destroy(); // Leave the channel after the song has finished playing
-    });
-
-    connection.on('error', (error) => {
+async function playThemeSong(channel, url, duration = 10, username = null) {
+    try {
+      const stream = ytdl(url, { filter: 'audioonly' });
+      const resource = createAudioResource(stream);
+      const player = createAudioPlayer();
+      let userId;
+      let targetMember;
+  
+      if (username) {
+        targetMember = channel.guild.members.cache.find(member => member.user.username === username);
+        if (targetMember) {
+          userId = targetMember.id;
+        } else {
+          console.error(`User ${username} not found`);
+          return;
+        }
+      } else {
+        userId = interaction.user.id;
+      }
+  
+      const connection = await joinVoiceChannel({
+        channelId: channel.id,
+        guildId: channel.guild.id,
+        adapterCreator: channel.guild.voiceAdapterCreator,
+      });
+  
+      player.play(resource);
+      connection.subscribe(player);
+      
+      setTimeout(() => {
+        connection.destroy(); // Leave the channel after the song has finished playing
+      }, duration * 1000);
+  
+      player.on(AudioPlayerStatus.Idle, () => {
+        connection.destroy(); // Leave the channel after the song has finished playing
+      });
+  
+      connection.on('error', (error) => {
+        console.error('Error playing theme song:', error);
+      });
+    } catch (error) {
       console.error('Error playing theme song:', error);
-    });
-  } catch (error) {
-    console.error('Error playing theme song:', error);
-  }
+    }
 }
-
+  
 async function getMemberThemeSong(userId) {
   try {
     const usersCollection = mongoClient.db('theme_songsDB').collection('userData');
