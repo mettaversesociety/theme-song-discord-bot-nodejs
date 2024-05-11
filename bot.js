@@ -1,16 +1,16 @@
 require('dotenv').config();
-const { Client, Intents } = require('discord.js');
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v9');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
 const ytdl = require('ytdl-core');
 const MongoClient = require('mongodb').MongoClient;
+const { Client, GatewayIntentBits } = require('discord.js');
 
 const client = new Client({
   intents: [
-    Intents.FLAGS.GUILD_VOICE_STATES,
-    Intents.FLAGS.GUILD_MEMBERS, // Necessary to access guild member information
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMembers,
   ],
 });
 
