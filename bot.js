@@ -167,6 +167,19 @@ async function getMemberThemeSong(userId) {
   }
 }
 
+async function playSoundBite(channel, url) {
+  if (url.includes("soundcloud.com")) {
+    try {
+      const queue = await distube.play(channel, url, {
+        textChannel: channel,
+        member: channel.members.get(username),
+      });
+    } catch (error) {
+      console.error("Error playing theme song:", error);
+    }
+  }
+}
+
 async function playThemeSong(channel, url, duration = 10, username) {
   if (url.includes("soundcloud.com")) {
     try {
@@ -424,7 +437,7 @@ client.on("interactionCreate", async (interaction) => {
       if (soundbite) {
         const channel = interaction.member.voice.channel;
         if (channel) {
-          playThemeSong(channel, soundbite.url, 10, interaction.user.username);
+          playSoundBite(channel, soundbite.url)
         } else {
           await interaction.reply({
             content: "You need to be in a voice channel to play a soundbite.",
