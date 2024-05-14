@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { Client, GatewayIntentBits, MessageActionRow, MessageButton } = require("discord.js");
+const { Client, GatewayIntentBits, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { SlashCommandBuilder } = require("@discordjs/builders");
 const { REST } = require("@discordjs/rest");
 const { Routes } = require("discord-api-types/v9");
@@ -394,23 +394,23 @@ client.on("interactionCreate", async (interaction) => {
 
       // Create a message with buttons for each soundbite
       const components = soundboard.map((soundbite) => {
-        const playButton = new MessageButton()
+        const playButton = new ButtonBuilder()
           .setCustomId(`play-${soundbite.title}`)
           .setLabel(`Play ${soundbite.title}`)
-          .setStyle('PRIMARY');
+          .setStyle(ButtonStyle.Primary);
 
-        const deleteButton = new MessageButton()
+        const deleteButton = new ButtonBuilder()
           .setCustomId(`delete-${soundbite.title}`)
           .setLabel(`Delete ${soundbite.title}`)
-          .setStyle('DANGER');
+          .setStyle(ButtonStyle.Danger);
 
-        return new MessageActionRow().addComponents(playButton, deleteButton);
+        return new ActionRowBuilder().addComponents(playButton, deleteButton);
       });
-      
+
       await interaction.reply({
         content: "Your Soundboard:",
         components,
-        ephemeral: true
+        ephemeral: true,
       });
     }
   } else if (interaction.isButton()) {
