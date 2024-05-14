@@ -11,9 +11,6 @@ const {
 const ytdl = require("ytdl-core");
 const { DisTube } = require("distube");
 const { SoundCloudPlugin } = require("@distube/soundcloud");
-const distube = new DisTube(client, {
-  plugins: [new SoundCloudPlugin()],
-});
 const MongoClient = require("mongodb").MongoClient;
 const ffmpeg = require("ffmpeg-static");
 process.env.FFMPEG_BINARY = ffmpeg;
@@ -26,6 +23,10 @@ const client = new Client({
   ],
 });
 
+const distube = new DisTube(client, {
+    plugins: [new SoundCloudPlugin()],
+});
+  
 const mongoClient = new MongoClient(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
