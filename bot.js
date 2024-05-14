@@ -23,6 +23,12 @@ const client = new Client({
   ],
 });
 
+const { DisTube } = require("distube");
+const { SoundCloudPlugin } = require("@distube/soundcloud");
+const distube = new DisTube(client, {
+  plugins: [new SoundCloudPlugin()],
+});
+
 const mongoClient = new MongoClient(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -107,33 +113,52 @@ async function getMemberThemeSong(userId) {
 }
 
 async function playThemeSong(channel, url, duration = 10, username) {
-  try {
-    const stream = ytdl(url, { quality: "highestaudio" });
-    const resource = createAudioResource(stream);
-    const player = createAudioPlayer();
-    const connection = joinVoiceChannel({
-      channelId: channel.id,
-      guildId: channel.guild.id,
-      adapterCreator: channel.guild.voiceAdapterCreator,
-    });
-    connection.subscribe(player);
-    player.play(resource);
-
-    setTimeout(() => {
-      player.stop(); // Stops playing after the specified duration (in seconds)
-      connection.destroy(); // Optionally destroy the connection immediately after stopping the player
-    }, duration * 1000);
-
-    player.on(AudioPlayerStatus.Idle, () => {
-      connection.destroy(); // Additional cleanup role in case something else causes the player to stop
-    });
-
-    connection.on("error", (error) => {
-      console.error("Error in Voice Connection: ", error);
-    });
-  } catch (error) {
-    console.error("Error playing theme song:", error);
-  }
+    if (url.includes("soundcloud.com")) {
+        try {
+            const queue = await distube.play(channel, url, {
+              textChannel: channel,
+              member: channel.members.get(username),
+            });
+        
+            // Setting the timeout to stop the music after specified 'duration'
+            setTimeout(() => {
+              distube.stop(channel.guild.id);
+            }, duration * 1000);
+        
+            queue.once("disconnect", () => console.log("Disconnected!"));
+          } catch (error) {
+            console.error("Error playing theme song:", error);
+          }
+    
+    } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+        try {
+            const stream = ytdl(url, { quality: "highestaudio" });
+            const resource = createAudioResource(stream);
+            const player = createAudioPlayer();
+            const connection = joinVoiceChannel({
+              channelId: channel.id,
+              guildId: channel.guild.id,
+              adapterCreator: channel.guild.voiceAdapterCreator,
+            });
+            connection.subscribe(player);
+            player.play(resource);
+        
+            setTimeout(() => {
+              player.stop(); // Stops playing after the specified duration (in seconds)
+              connection.destroy(); // Optionally destroy the connection immediately after stopping the player
+            }, duration * 1000);
+        
+            player.on(AudioPlayerStatus.Idle, () => {
+              connection.destroy(); // Additional cleanup role in case something else causes the player to stop
+            });
+        
+            connection.on("error", (error) => {
+              console.error("Error in Voice Connection: ", error);
+            });
+          } catch (error) {
+            console.error("Error playing theme song:", error);
+          }        
+    }
 }
 
 function retrieveUserIdByUsername(members, username) {
@@ -199,7 +224,7 @@ client.on("interactionCreate", async (interaction) => {
   try {
     // Fetch all members
     const members = await interaction.guild.members.fetch();
-    let userId = retrieveUserIdByUsername(members, username);
+    userId = retrieveUserIdByUsername(members, username);
     console.log("User ID:", userId);
 
     if (userId) {
