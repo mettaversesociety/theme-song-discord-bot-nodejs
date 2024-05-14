@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { Client, GatewayIntentBits } = require("discord.js");
+const { Client, GatewayIntentBits, MessageActionRow, MessageButton } = require("discord.js");
 const { SlashCommandBuilder } = require("@discordjs/builders");
 const { REST } = require("@discordjs/rest");
 const { Routes } = require("discord-api-types/v9");
@@ -12,6 +12,7 @@ const {
 const ytdl = require("ytdl-core");
 const MongoClient = require("mongodb").MongoClient;
 const ffmpeg = require("ffmpeg-static");
+require('dotenv').config();
 
 process.env.FFMPEG_BINARY = ffmpeg;
 
@@ -306,113 +307,138 @@ async function getSoundboard(userId) {
 }
 
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isCommand()) return;
+  if (interaction.isCommand()) {
+    let userId = interaction.user.id;
 
-  let userId = interaction.user.id;
+    if (interaction.commandName === "set-theme") {
 
-  if (interaction.commandName === "set-theme") {
+      const url = interaction.options.getString("url");
+      const duration = interaction.options.getInteger("duration");
+      const username = interaction.options.getString("username");
 
-    const url = interaction.options.getString("url");
-    const duration = interaction.options.getInteger("duration");
-    const username = interaction.options.getString("username");
+      try {
+        // Fetch all members
+        const members = await interaction.guild.members.fetch();
+        if (username) {
+          userId = retrieveUserIdByUsername(members, username);
+        }
 
-    try {
-      // Fetch all members
-      const members = await interaction.guild.members.fetch();
-      if (username) {
-        userId = retrieveUserIdByUsername(members, username);
-      }
+        console.log("User ID:", userId);
 
-      console.log("User ID:", userId);
-
-      if (userId) {
-        // If userId is already found, use it
-        await setMemberThemeSong(userId, url, duration, username);
-        await interaction.reply({
-          content: `Theme song set for ${username || interaction.user.username}.`,
-          ephemeral: true,
-        });
-      } else {
-        // If userId is not found, try to find the user by username or globalName
-        const user = members.find((member) => {
-          return (
-            member.user.username === username ||
-            member.user.globalName === username
-          );
-        });
-
-        if (user) {
-          userId = user.id;
+        if (userId) {
+          // If userId is already found, use it
           await setMemberThemeSong(userId, url, duration, username);
           await interaction.reply({
             content: `Theme song set for ${username || interaction.user.username}.`,
             ephemeral: true,
           });
         } else {
+          // If userId is not found, try to find the user by username or globalName
+          const user = members.find((member) => {
+            return (
+              member.user.username === username ||
+              member.user.globalName === username
+            );
+          });
+
+          if (user) {
+            userId = user.id;
+            await setMemberThemeSong(userId, url, duration, username);
+            await interaction.reply({
+              content: `Theme song set for ${username || interaction.user.username}.`,
+              ephemeral: true,
+            });
+          } else {
+            await interaction.reply({
+              content: `No user found with the specified username: ${username}`,
+              ephemeral: true,
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Failed during interaction handling:", error);
+        await interaction.reply({
+          content: "An error occurred while setting the theme song.",
+          ephemeral: true,
+        });
+      }
+    } else if (interaction.commandName === "add-soundbite") {
+      const title = interaction.options.getString("title");
+      const url = interaction.options.getString("url");
+
+      await addSoundbite(userId, title, url);
+      await interaction.reply({
+        content: `Soundbite "${title}" added!`,
+        ephemeral: true
+      });
+
+    } else if (interaction.commandName === "delete-soundbite") {
+      const title = interaction.options.getString("title");
+
+      await deleteSoundbite(userId, title);
+      await interaction.reply({
+        content: `Soundbite "${title}" deleted!`,
+        ephemeral: true
+      });
+
+    } else if (interaction.commandName === "view-soundboard") {
+      const soundboard = await getSoundboard(userId);
+
+      if (soundboard.length === 0) {
+        await interaction.reply({
+          content: "Your soundboard is empty.",
+          ephemeral: true
+        });
+        return;
+      }
+
+      // Create a message with buttons for each soundbite
+      const components = soundboard.map((soundbite) => {
+        const playButton = new MessageButton()
+          .setCustomId(`play-${soundbite.title}`)
+          .setLabel(`Play ${soundbite.title}`)
+          .setStyle('PRIMARY');
+
+        const deleteButton = new MessageButton()
+          .setCustomId(`delete-${soundbite.title}`)
+          .setLabel(`Delete ${soundbite.title}`)
+          .setStyle('DANGER');
+
+        return new MessageActionRow().addComponents(playButton, deleteButton);
+      });
+      
+      await interaction.reply({
+        content: "Your Soundboard:",
+        components,
+        ephemeral: true
+      });
+    }
+  } else if (interaction.isButton()) {
+    const userId = interaction.user.id;
+    const [action, title] = interaction.customId.split('-');
+
+    if (action === 'play') {
+      const soundboard = await getSoundboard(userId);
+      const soundbite = soundboard.find(sb => sb.title === title);
+
+      if (soundbite) {
+        const channel = interaction.member.voice.channel;
+        if (channel) {
+          playThemeSong(channel, soundbite.url, 10, interaction.user.username);
+        } else {
           await interaction.reply({
-            content: `No user found with the specified username: ${username}`,
+            content: "You need to be in a voice channel to play a soundbite.",
             ephemeral: true,
           });
         }
       }
-    } catch (error) {
-      console.error("Failed during interaction handling:", error);
+    } else if (action === 'delete') {
+      await deleteSoundbite(userId, title);
       await interaction.reply({
-        content: "An error occurred while setting the theme song.",
+        content: `Soundbite "${title}" deleted!`,
         ephemeral: true,
       });
     }
-  } else if (interaction.commandName === "add-soundbite") {
-    const title = interaction.options.getString("title");
-    const url = interaction.options.getString("url");
-
-    await addSoundbite(userId, title, url);
-    await interaction.reply({
-      content: `Soundbite "${title}" added!`,
-      ephemeral: true
-    });
-
-  } else if (interaction.commandName === "delete-soundbite") {
-    const title = interaction.options.getString("title");
-
-    await deleteSoundbite(userId, title);
-    await interaction.reply({
-      content: `Soundbite "${title}" deleted!`,
-      ephemeral: true
-    });
-
-  } else if (interaction.commandName === "view-soundboard") {
-    const soundboard = await getSoundboard(userId);
-
-    if (soundboard.length === 0) {
-      await interaction.reply({
-        content: "Your soundboard is empty.",
-        ephemeral: true
-      });
-      return;
-    }
-
-    const components = [];
-    for (const soundbite of soundboard) {
-      components.push(
-        new MessageActionRow().addComponents(
-          new MessageButton()
-            .setCustomId(`play_${soundbite.title}`)
-            .setLabel(`Play ${soundbite.title}`)
-            .setStyle('PRIMARY'),
-          new MessageButton()
-            .setCustomId(`delete_${soundbite.title}`)
-            .setLabel(`Delete ${soundbite.title}`)
-            .setStyle('DANGER')
-        )
-      );
-    }
-
-    await interaction.reply({
-      content: "Your Soundboard:",
-      components,
-      ephemeral: true
-    });
   }
 });
 
