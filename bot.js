@@ -26,26 +26,26 @@ const client = new Client({
 const { DisTube } = require("distube");
 const { SoundCloudPlugin } = require("@distube/soundcloud");
 const distube = new DisTube(client, {
-    ffmpeg: {
-        path: ffmpeg
-    },
-    leaveOnEmpty: true,
-    leaveOnFinish: true,
-    leaveOnStop: true,
-    plugins: [new SoundCloudPlugin()],
+  ffmpeg: {
+    path: ffmpeg,
+  },
+  leaveOnEmpty: true,
+  leaveOnFinish: true,
+  leaveOnStop: true,
+  plugins: [new SoundCloudPlugin()],
 });
 
-distube.on('play', (queue) => {
-    const connection = queue.voiceConnection;  // Get the voice connection from the queue
-    connection.once("stateChange", (oldState, newState) => {
-        if (newState.status === "disconnected") {
-            console.log("Disconnected!");
-        }
-    });
+distube.on("play", (queue) => {
+  const connection = queue.voiceConnection; // Get the voice connection from the queue
+  connection.once("stateChange", (oldState, newState) => {
+    if (newState.status === "disconnected") {
+      console.log("Disconnected!");
+    }
+  });
 });
 
-distube.on('error', (channel, error) => {
-    console.error('DisTube error:', channel, error);
+distube.on("error", (channel, error) => {
+  console.error("DisTube error:", channel, error);
 });
 
 const mongoClient = new MongoClient(process.env.MONGODB_URI, {
@@ -91,11 +91,46 @@ const setThemeCommand = new SlashCommandBuilder()
       .setRequired(false),
   ); // make this optional as it's only for server managers
 
+  const addSoundbiteCommand = new SlashCommandBuilder()
+  .setName("add-soundbite")
+  .setDescription("Add a new soundbite to your collection")
+  .addStringOption((option) =>
+    option
+      .setName("title")
+      .setDescription("The title of the soundbite")
+      .setRequired(true),
+  )
+  .addStringOption((option) =>
+    option
+      .setName("url")
+      .setDescription("The URL of the soundbite")
+      .setRequired(true),
+  );
+
+const deleteSoundbiteCommand = new SlashCommandBuilder()
+  .setName("delete-soundbite")
+  .setDescription("Delete a soundbite from your collection")
+  .addStringOption((option) =>
+    option
+      .setName("title")
+      .setDescription("The title of the soundbite to delete")
+      .setRequired(true),
+  );
+
+const viewSoundboardCommand = new SlashCommandBuilder()
+  .setName("view-soundboard")
+  .setDescription("View your soundboard");
+
 async function registerCommands() {
   try {
     const rest = new REST({ version: "9" }).setToken(process.env.DISCORD_TOKEN);
     await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), {
-      body: [setThemeCommand.toJSON()],
+      body: [
+        setThemeCommand.toJSON(),
+        addSoundbiteCommand.toJSON(),
+        deleteSoundbiteCommand.toJSON(),
+        viewSoundboardCommand.toJSON(),
+      ],
     });
     console.log("Successfully reloaded application (/) commands.");
   } catch (error) {
@@ -132,57 +167,55 @@ async function getMemberThemeSong(userId) {
 }
 
 async function playThemeSong(channel, url, duration = 10, username) {
-    if (url.includes("soundcloud.com")) {
-        try {
-            const queue = await distube.play(channel, url, {
-              textChannel: channel,
-              member: channel.members.get(username),
-            });
-        
-            // Setting the timeout to stop the music after specified 'duration'
-            setTimeout(() => {
-              distube.stop(channel.guild.id);
-            }, duration * 1000);
-        
-          } catch (error) {
-            console.error("Error playing theme song:", error);
-          }
-    
-    } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
-        try {
-            const stream = ytdl(url, { quality: "highestaudio" });
-            const resource = createAudioResource(stream);
-            const player = createAudioPlayer();
-            const connection = joinVoiceChannel({
-              channelId: channel.id,
-              guildId: channel.guild.id,
-              adapterCreator: channel.guild.voiceAdapterCreator,
-            });
-            connection.subscribe(player);
-            player.play(resource);
-        
-            setTimeout(() => {
-              player.stop(); // Stops playing after the specified duration (in seconds)
-              connection.destroy(); // Optionally destroy the connection immediately after stopping the player
-            }, duration * 1000);
-        
-            player.on(AudioPlayerStatus.Idle, () => {
-              connection.destroy(); // Additional cleanup role in case something else causes the player to stop
-            });
-        
-            connection.on("error", (error) => {
-              console.error("Error in Voice Connection: ", error);
-            });
-          } catch (error) {
-            console.error("Error playing theme song:", error);
-          }        
+  if (url.includes("soundcloud.com")) {
+    try {
+      const queue = await distube.play(channel, url, {
+        textChannel: channel,
+        member: channel.members.get(username),
+      });
+
+      // Setting the timeout to stop the music after specified 'duration'
+      setTimeout(() => {
+        distube.stop(channel.guild.id);
+      }, duration * 1000);
+    } catch (error) {
+      console.error("Error playing theme song:", error);
     }
+  } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+    try {
+      const stream = ytdl(url, { quality: "highestaudio" });
+      const resource = createAudioResource(stream);
+      const player = createAudioPlayer();
+      const connection = joinVoiceChannel({
+        channelId: channel.id,
+        guildId: channel.guild.id,
+        adapterCreator: channel.guild.voiceAdapterCreator,
+      });
+      connection.subscribe(player);
+      player.play(resource);
+
+      setTimeout(() => {
+        player.stop(); // Stops playing after the specified duration (in seconds)
+        connection.destroy(); // Optionally destroy the connection immediately after stopping the player
+      }, duration * 1000);
+
+      player.on(AudioPlayerStatus.Idle, () => {
+        connection.destroy(); // Additional cleanup role in case something else causes the player to stop
+      });
+
+      connection.on("error", (error) => {
+        console.error("Error in Voice Connection: ", error);
+      });
+    } catch (error) {
+      console.error("Error playing theme song:", error);
+    }
+  }
 }
 
-distube.on('playSong', (queue, song) => {
-    queue.textChannel.send(`Playing ${song.name}`);
+distube.on("playSong", (queue, song) => {
+  queue.textChannel.send(`Playing ${song.name}`);
 });
-  
+
 function retrieveUserIdByUsername(members, username) {
   console.log("USERNAME ", username);
 
@@ -234,56 +267,151 @@ function retrieveUserIdByUsername(members, username) {
   }
 }
 
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isCommand() || interaction.commandName !== "set-theme")
-    return;
+async function addSoundbite(userId, title, url) {
+  try {
+    const usersCollection = mongoClient.db("theme_songsDB").collection("userData");
+    await usersCollection.updateOne(
+      { _id: userId },
+      { $push: { soundboard: { title, url } } },
+      { upsert: true },
+    );
+    console.log(`Soundbite added for user ${userId}`);
+  } catch (error) {
+    console.error("Error adding soundbite:", error);
+  }
+}
 
-  const url = interaction.options.getString("url");
-  const duration = interaction.options.getInteger("duration");
-  const username = interaction.options.getString("username");
+async function deleteSoundbite(userId, title) {
+  try {
+    const usersCollection = mongoClient.db("theme_songsDB").collection("userData");
+    await usersCollection.updateOne(
+      { _id: userId },
+      { $pull: { soundboard: { title } } },
+    );
+    console.log(`Soundbite deleted for user ${userId}`);
+  } catch (error) {
+    console.error("Error deleting soundbite:", error);
+  }
+}
+
+async function getSoundboard(userId) {
+  try {
+    const usersCollection = mongoClient.db("theme_songsDB").collection("userData");
+    const user = await usersCollection.findOne({ _id: userId });
+    return user ? user.soundboard : [];
+  } catch (error) {
+    console.error("Error fetching soundboard:", error);
+    return [];
+  }
+}
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isCommand()) return;
+
   let userId = interaction.user.id;
 
-  try {
-    // Fetch all members
-    const members = await interaction.guild.members.fetch();
-    userId = retrieveUserIdByUsername(members, username);
-    console.log("User ID:", userId);
+  if (interaction.commandName === "set-theme") {
 
-    if (userId) {
-      // If userId is already found, use it
-      await setMemberThemeSong(userId, url, duration, username);
-      await interaction.reply({
-        content: `Theme song set for ${username || interaction.user.username}.`,
-        ephemeral: true,
-      });
-    } else {
-      // If userId is not found, try to find the user by username or globalName
-      const user = members.find((member) => {
-        return (
-          member.user.username === username ||
-          member.user.globalName === username
-        );
-      });
+    const url = interaction.options.getString("url");
+    const duration = interaction.options.getInteger("duration");
+    const username = interaction.options.getString("username");
 
-      if (user) {
-        userId = user.id;
+    try {
+      // Fetch all members
+      const members = await interaction.guild.members.fetch();
+      if (username) {
+        userId = retrieveUserIdByUsername(members, username);
+      }
+
+      console.log("User ID:", userId);
+
+      if (userId) {
+        // If userId is already found, use it
         await setMemberThemeSong(userId, url, duration, username);
         await interaction.reply({
           content: `Theme song set for ${username || interaction.user.username}.`,
           ephemeral: true,
         });
       } else {
-        await interaction.reply({
-          content: `No user found with the specified username: ${username}`,
-          ephemeral: true,
+        // If userId is not found, try to find the user by username or globalName
+        const user = members.find((member) => {
+          return (
+            member.user.username === username ||
+            member.user.globalName === username
+          );
         });
+
+        if (user) {
+          userId = user.id;
+          await setMemberThemeSong(userId, url, duration, username);
+          await interaction.reply({
+            content: `Theme song set for ${username || interaction.user.username}.`,
+            ephemeral: true,
+          });
+        } else {
+          await interaction.reply({
+            content: `No user found with the specified username: ${username}`,
+            ephemeral: true,
+          });
+        }
       }
+    } catch (error) {
+      console.error("Failed during interaction handling:", error);
+      await interaction.reply({
+        content: "An error occurred while setting the theme song.",
+        ephemeral: true,
+      });
     }
-  } catch (error) {
-    console.error("Failed during interaction handling:", error);
+  } else if (interaction.commandName === "add-soundbite") {
+    const title = interaction.options.getString("title");
+    const url = interaction.options.getString("url");
+
+    await addSoundbite(userId, title, url);
     await interaction.reply({
-      content: "An error occurred while setting the theme song.",
-      ephemeral: true,
+      content: `Soundbite "${title}" added!`,
+      ephemeral: true
+    });
+
+  } else if (interaction.commandName === "delete-soundbite") {
+    const title = interaction.options.getString("title");
+
+    await deleteSoundbite(userId, title);
+    await interaction.reply({
+      content: `Soundbite "${title}" deleted!`,
+      ephemeral: true
+    });
+
+  } else if (interaction.commandName === "view-soundboard") {
+    const soundboard = await getSoundboard(userId);
+
+    if (soundboard.length === 0) {
+      await interaction.reply({
+        content: "Your soundboard is empty.",
+        ephemeral: true
+      });
+      return;
+    }
+
+    const components = [];
+    for (const soundbite of soundboard) {
+      components.push(
+        new MessageActionRow().addComponents(
+          new MessageButton()
+            .setCustomId(`play_${soundbite.title}`)
+            .setLabel(`Play ${soundbite.title}`)
+            .setStyle('PRIMARY'),
+          new MessageButton()
+            .setCustomId(`delete_${soundbite.title}`)
+            .setLabel(`Delete ${soundbite.title}`)
+            .setStyle('DANGER')
+        )
+      );
+    }
+
+    await interaction.reply({
+      content: "Your Soundboard:",
+      components,
+      ephemeral: true
     });
   }
 });
