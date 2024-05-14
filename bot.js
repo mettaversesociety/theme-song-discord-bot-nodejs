@@ -27,7 +27,7 @@ const { DisTube } = require("distube");
 const { SoundCloudPlugin } = require("@distube/soundcloud");
 const distube = new DisTube(client, {
     ffmpeg: {
-        path: ffmpegStatic
+        path: ffmpeg
     },
     leaveOnEmpty: true,
     leaveOnFinish: true,
