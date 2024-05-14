@@ -172,7 +172,6 @@ async function playSoundBite(channel, url) {
     try {
       const queue = await distube.play(channel, url, {
         textChannel: channel,
-        member: channel.members.get(username),
       });
     } catch (error) {
       console.error("Error playing theme song:", error);
