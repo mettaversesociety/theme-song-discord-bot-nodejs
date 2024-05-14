@@ -26,7 +26,12 @@ const client = new Client({
 const { DisTube } = require("distube");
 const { SoundCloudPlugin } = require("@distube/soundcloud");
 const distube = new DisTube(client, {
-  plugins: [new SoundCloudPlugin()],
+    ffmpegPath: ffmpeg,
+    plugins: [new SoundCloudPlugin()],
+});
+
+distube.on('error', (channel, error) => {
+    console.error('DisTube error:', channel, error);
 });
 
 const mongoClient = new MongoClient(process.env.MONGODB_URI, {
@@ -161,6 +166,10 @@ async function playThemeSong(channel, url, duration = 10, username) {
     }
 }
 
+distube.on('playSong', (queue, song) => {
+    queue.textChannel.send(`Playing ${song.name}`);
+});
+  
 function retrieveUserIdByUsername(members, username) {
   console.log("USERNAME ", username);
 
