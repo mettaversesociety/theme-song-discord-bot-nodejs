@@ -26,8 +26,22 @@ const client = new Client({
 const { DisTube } = require("distube");
 const { SoundCloudPlugin } = require("@distube/soundcloud");
 const distube = new DisTube(client, {
-    ffmpegPath: ffmpeg,
+    ffmpeg: {
+        path: ffmpegStatic
+    },
+    leaveOnEmpty: true,
+    leaveOnFinish: true,
+    leaveOnStop: true,
     plugins: [new SoundCloudPlugin()],
+});
+
+distube.on('play', (queue) => {
+    const connection = queue.voiceConnection;  // Get the voice connection from the queue
+    connection.once("stateChange", (oldState, newState) => {
+        if (newState.status === "disconnected") {
+            console.log("Disconnected!");
+        }
+    });
 });
 
 distube.on('error', (channel, error) => {
@@ -130,7 +144,6 @@ async function playThemeSong(channel, url, duration = 10, username) {
               distube.stop(channel.guild.id);
             }, duration * 1000);
         
-            queue.once("disconnect", () => console.log("Disconnected!"));
           } catch (error) {
             console.error("Error playing theme song:", error);
           }
