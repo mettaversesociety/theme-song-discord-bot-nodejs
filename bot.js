@@ -265,6 +265,10 @@ async function playThemeSong(channel, url, duration = 10, username) {
         player.stop(); // Stops playing after the specified duration (in seconds)
       }, duration * 1000);
 
+      player.on(AudioPlayerStatus.Idle, () => {
+        connection.destroy(); // Additional cleanup role in case something else causes the player to stop
+      });
+
       connection.on("error", (error) => {
         console.error("Error in Voice Connection: ", error);
       });
