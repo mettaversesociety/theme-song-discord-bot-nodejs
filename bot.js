@@ -178,15 +178,27 @@ async function getMemberThemeSong(userId) {
   }
 }
 
-async function playSoundBite(channel, url) {
+async function playSoundBite(interaction, channel, url) {
   if (url.includes("soundcloud.com")) {
     try {
-      const queue = await distube.play(channel, url, {
+      // Respond quickly to prevent the "interaction failed" warning
+      await interaction.deferReply();
+
+      await distube.play(channel, url, {
         textChannel: channel,
       });
+
+      // Inform the user that the soundbite is playing
+      await interaction.editReply("Playing your soundbite!");
+
     } catch (error) {
       console.error("Error playing theme song:", error);
+      // Inform the user of an error
+      await interaction.editReply("There was an error playing the theme song.");
     }
+  } else {
+    // Inform the user if the URL is not valid
+    await interaction.reply("Please provide a valid SoundCloud URL.");
   }
 }
 
@@ -498,7 +510,7 @@ client.on("interactionCreate", async (interaction) => {
       if (soundbite) {
         const channel = interaction.member.voice.channel;
         if (channel) {
-          playSoundBite(channel, soundbite.url)
+          await playSoundBite(interaction, channel, url);
         } else {
           await interaction.reply({
             content: "You need to be in a voice channel to play a soundbite.",
