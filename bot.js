@@ -233,27 +233,31 @@ async function playThemeSong(channel, url, duration = 10, username) {
         member: channel.members.get(username),
       });
 
-      // Check if queue exists and get the current song's length
-      const songLength = queue.songs[0]?.duration || 0;
+      // Check if the queue and songs[0] exist
+      if (queue && queue.songs && queue.songs[0]) {
+        // Get the current song's length
+        const songLength = queue.songs[0].duration || 0;
 
-      // Adjust the duration if it exceeds the song's length
-      const adjustedDuration = Math.min(duration, songLength);
+        // Adjust the duration if it exceeds the song's length
+        const adjustedDuration = Math.min(duration, songLength);
 
-      // Setting the timeout to stop the music after specified 'duration'
-      if (adjustedDuration > 0) {
-        // Setting the timeout to stop the music after the specified 'adjustedDuration'
-        setTimeout(() => {
-          try {
-            const currentQueue = distube.getQueue(channel.guild.id);
-            if (currentQueue) {
-              distube.stop(channel.guild.id);
-            }
-          } catch (stopError) {
-            console.error("Error stopping the song:", stopError);
-          }
-        }, adjustedDuration * 1000);
-      }
-    } catch (error) {
+        if (adjustedDuration > 0) {
+            // Setting the timeout to stop the music after the specified 'adjustedDuration'
+            setTimeout(() => {
+                try {
+                    const currentQueue = distube.getQueue(channel.guild.id);
+                    if (currentQueue) {
+                        distube.stop(channel.guild.id);
+                    }
+                } catch (stopError) {
+                    console.error("Error stopping the song:", stopError);
+                }
+            }, adjustedDuration * 1000);
+        }
+    } else {
+        console.error("No valid song found in the current queue.");
+    }
+  } catch (error) {
       console.error("Error playing theme song:", error);
     }
   } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
