@@ -122,6 +122,16 @@ const viewSoundboardCommand = new SlashCommandBuilder()
   .setName("view-soundboard")
   .setDescription("View your soundboard");
 
+const playYoutubeCommand = new SlashCommandBuilder()
+  .setName("play")
+  .setDescription("Add a new soundbite to your collection")
+  .addStringOption((option) =>
+    option
+      .setName("url")
+      .setDescription("The URL of the youtube video")
+      .setRequired(true),
+  );
+
 async function registerCommands() {
   try {
     const rest = new REST({ version: "9" }).setToken(process.env.DISCORD_TOKEN);
@@ -131,6 +141,7 @@ async function registerCommands() {
         addSoundbiteCommand.toJSON(),
         deleteSoundbiteCommand.toJSON(),
         viewSoundboardCommand.toJSON(),
+        playYoutubeCommand.toJSON()
       ],
     });
     console.log("Successfully reloaded application (/) commands.");
@@ -172,6 +183,33 @@ async function playSoundBite(channel, url) {
     try {
       const queue = await distube.play(channel, url, {
         textChannel: channel,
+      });
+    } catch (error) {
+      console.error("Error playing theme song:", error);
+    }
+  }
+}
+
+async function playYoutube(channel, url) {
+  if (url.includes("youtube.com") || url.includes("youtu.be")) {
+    try {
+      const stream = ytdl(url, { quality: "highestaudio" });
+      const resource = createAudioResource(stream);
+      const player = createAudioPlayer();
+      const connection = joinVoiceChannel({
+        channelId: channel.id,
+        guildId: channel.guild.id,
+        adapterCreator: channel.guild.voiceAdapterCreator,
+      });
+      connection.subscribe(player);
+      player.play(resource);
+
+      player.on(AudioPlayerStatus.Idle, () => {
+        connection.destroy(); // Additional cleanup role in case something else causes the player to stop
+      });
+
+      connection.on("error", (error) => {
+        console.error("Error in Voice Connection: ", error);
       });
     } catch (error) {
       console.error("Error playing theme song:", error);
@@ -374,6 +412,15 @@ client.on("interactionCreate", async (interaction) => {
           ephemeral: true,
         });
       }
+    } else if (interaction.commandName === "play") {
+      const url = interaction.options.getString("url");
+
+      await playYoutube(url);
+      await interaction.reply({
+        content: `Playing youtube!`,
+        ephemeral: true
+      });
+
     } else if (interaction.commandName === "add-soundbite") {
       const title = interaction.options.getString("title");
       const url = interaction.options.getString("url");
