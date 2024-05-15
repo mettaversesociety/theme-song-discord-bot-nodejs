@@ -56,18 +56,20 @@ async function maintainConnection(channel) {
   let connection = voiceConnections.get(key);
 
   if (connection) {
-      // Check if the bot is in a different channel
-      if (connection.joinConfig.channelId !== channel.id) {
-          // Moving the connection to the new channel
-          connection = connection.rejoin({
-              channelId: channel.id,
-              guildId: channel.guild.id,
-              adapterCreator: channel.guild.voiceAdapterCreator,
-          }).subscribe()
-          console.log(`Moved connection to new channel: ${channel.name}`);
-      } else {
-          console.log('Bot is already connected to this channel.');
-      }
+    // Check if the bot is connected to a different channel
+    if (connection.joinConfig.channelId !== channel.id) {
+        // Disconnect the old connection and join the new channel
+        connection.destroy();
+        connection = joinVoiceChannel({
+            channelId: channel.id,
+            guildId: channel.guild.id,
+            adapterCreator: channel.guild.voiceAdapterCreator,
+        });
+
+        console.log(`Moved connection to new channel: ${channel.name}`);
+    } else {
+        console.log('Bot is already connected to this channel.');
+    }
   } else {
       // No connection exists, so join the channel
       connection = joinVoiceChannel({
@@ -75,10 +77,16 @@ async function maintainConnection(channel) {
           guildId: channel.guild.id,
           adapterCreator: channel.guild.voiceAdapterCreator,
       });
-      
+
       connection.on('stateChange', (oldState, newState) => {
-          if (oldState.status === VoiceConnectionStatus.Disconnected) {
-              connection.rejoin();
+          if (oldState.status === VoiceConnectionStatus.Disconnected && newState.status !== VoiceConnectionStatus.Destroyed) {
+              // If the connection gets disconnected, attempt to rejoin the channel
+              connection = joinVoiceChannel({
+                  channelId: channel.id,
+                  guildId: channel.guild.id,
+                  adapterCreator: channel.guild.voiceAdapterCreator,
+              });
+              voiceConnections.set(key, connection);
           }
       });
 
