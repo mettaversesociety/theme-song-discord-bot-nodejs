@@ -598,30 +598,61 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-client.on("voiceStateUpdate", async (oldState, newState) => {
+client.on('voiceStateUpdate', async (oldState, newState) => {
   if (oldState.channelId === newState.channelId) {
-    return; // No change in state or user left a channel
+      return; // No change in state or user left a channel
   }
 
   const member = newState.member;
   const themeSongData = await getMemberThemeSong(member.id);
-  if (themeSongData) {
-    const { url, duration, username } = themeSongData;
-    const channel = newState.guild.channels.cache.get(newState.channelId);
-    if (channel) {
-      playThemeSong(channel, url, duration, username);
-    }
-  }
-  
-  if (oldState.channelId && !newState.channelId) {
-    // User left a voice channel, clean up the old connection
-    const oldConnection = voiceConnections.get(oldState.channelId);
-    if (oldConnection) {
-        oldConnection.destroy();
-        voiceConnections.delete(oldState.channelId);
-    }
+  const newChannel = newState.guild.channels.cache.get(newState.channelId);
+
+  if (oldState.channelId && (!newState.channelId || newState.channelId !== oldState.channelId)) {
+      // User left the old channel or moved to a new one, clean up the old connection
+      const oldConnection = getVoiceConnection(oldState.guild.id);
+      if (oldConnection) {
+          oldConnection.destroy();
+          console.log(`${member.user.username} left the channel or moved. Old connection destroyed.`);
+      }
   }
 
+  if (newChannel && themeSongData) {
+      const { url, duration, username } = themeSongData;
+
+      try {
+          // Create a new connection if not already connected to the new channel
+          if (!getVoiceConnection(newState.guild.id) || getVoiceConnection(newState.guild.id).joinConfig.channelId !== newState.channelId) {
+              const connection = joinVoiceChannel({
+                  channelId: newChannel.id,
+                  guildId: newChannel.guild.id,
+                  adapterCreator: newChannel.guild.voiceAdapterCreator
+              });
+
+              connection.on(VoiceConnectionStatus.Ready, () => {
+                  console.log(`Successfully connected to ${newChannel.name}`);
+                  playThemeSong(newChannel, url, duration, username);
+              });
+
+              connection.on(VoiceConnectionStatus.Disconnected, () => {
+                  console.log(`Disconnected from ${newChannel.name}`);
+                  if (connection.rejoinAttempts < 5) {
+                      setTimeout(() => {
+                          connection.rejoin();
+                      }, connection.rejoinAttempts * 5000);
+                  }
+              });
+
+              connection.on('error', error => {
+                  console.error(`Connection error: ${error}`);
+              });
+          } else {
+              console.log('Bot is already connected to this channel.');
+              playThemeSong(newChannel, url, duration, username);
+          }
+      } catch (error) {
+          console.error('Error attempting to rejoin or play theme song:', error);
+      }
+  }
 });
 
 client.login(process.env.DISCORD_TOKEN);
