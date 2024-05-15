@@ -123,8 +123,8 @@ const viewSoundboardCommand = new SlashCommandBuilder()
   .setDescription("View your soundboard");
 
 const playYoutubeCommand = new SlashCommandBuilder()
-  .setName("play")
-  .setDescription("Add a new soundbite to your collection")
+  .setName("yt")
+  .setDescription("Play Youtube")
   .addStringOption((option) =>
     option
       .setName("url")
@@ -417,7 +417,7 @@ client.on("interactionCreate", async (interaction) => {
 
       const channel = interaction.member.voice.channel;
       if (channel) {
-        playYoutube(channel, url)
+        await playYoutube(channel, url)
       }
       await interaction.reply({
         content: `Playing youtube!`,
