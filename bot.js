@@ -83,7 +83,7 @@ const setThemeCommand = new SlashCommandBuilder()
     option
       .setName("duration")
       .setDescription("The duration of the theme song")
-      .setRequired(true),
+      .setRequired(false),
   )
   .addStringOption((option) =>
     option
@@ -150,7 +150,7 @@ async function registerCommands() {
   }
 }
 
-async function setMemberThemeSong(userId, url, duration, username) {
+async function setMemberThemeSong(userId, url, duration = 10, username) {
   try {
     const usersCollection = mongoClient
       .db("theme_songsDB")
