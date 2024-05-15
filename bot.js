@@ -415,7 +415,10 @@ client.on("interactionCreate", async (interaction) => {
     } else if (interaction.commandName === "play") {
       const url = interaction.options.getString("url");
 
-      await playYoutube(url);
+      const channel = interaction.member.voice.channel;
+      if (channel) {
+        playYoutube(channel, url)
+      }
       await interaction.reply({
         content: `Playing youtube!`,
         ephemeral: true
