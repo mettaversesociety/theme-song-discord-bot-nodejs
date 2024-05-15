@@ -510,7 +510,7 @@ client.on("interactionCreate", async (interaction) => {
       if (soundbite) {
         const channel = interaction.member.voice.channel;
         if (channel) {
-          await playSoundBite(interaction, channel, url);
+          await playSoundBite(interaction, channel, soundbite.url);
         } else {
           await interaction.reply({
             content: "You need to be in a voice channel to play a soundbite.",
