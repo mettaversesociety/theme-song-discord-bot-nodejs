@@ -418,11 +418,17 @@ client.on("interactionCreate", async (interaction) => {
       const channel = interaction.member.voice.channel;
       if (channel) {
         await playYoutube(channel, url)
-      }
-      await interaction.reply({
-        content: `Playing youtube!`,
-        ephemeral: true
+        await interaction.reply({
+          content: `Playing youtube!`,
+          ephemeral: true
+        });
+      } else {
+        await interaction.reply({
+            content: "You need to be in a voice channel to play a YouTube video.",
+            ephemeral: true
       });
+    }
+
 
     } else if (interaction.commandName === "add-soundbite") {
       const title = interaction.options.getString("title");
