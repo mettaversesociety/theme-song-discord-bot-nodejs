@@ -412,24 +412,6 @@ client.on("interactionCreate", async (interaction) => {
           ephemeral: true,
         });
       }
-    } else if (interaction.commandName === "yt") {
-      const url = interaction.options.getString("url");
-
-      const channel = interaction.member.voice.channel;
-      if (channel) {
-        await playYoutube(channel, url)
-        await interaction.reply({
-          content: `Playing youtube!`,
-          ephemeral: true
-        });
-      } else {
-        await interaction.reply({
-            content: "You need to be in a voice channel to play a YouTube video.",
-            ephemeral: true
-      });
-    }
-
-
     } else if (interaction.commandName === "add-soundbite") {
       const title = interaction.options.getString("title");
       const url = interaction.options.getString("url");
@@ -480,6 +462,22 @@ client.on("interactionCreate", async (interaction) => {
         components,
         ephemeral: true,
       });
+    } else if (interaction.commandName === "yt") {
+      const url = interaction.options.getString("url");
+
+      const channel = interaction.member.voice.channel;
+      if (channel) {
+        await playYoutube(channel, url)
+        await interaction.reply({
+          content: `Playing youtube!`,
+          ephemeral: true
+        });
+      } else {
+        await interaction.reply({
+            content: "You need to be in a voice channel to play a YouTube video.",
+            ephemeral: true
+        });
+      }
     }
   } else if (interaction.isButton()) {
     const userId = interaction.user.id;
