@@ -8,6 +8,7 @@ const {
   createAudioPlayer,
   createAudioResource,
   AudioPlayerStatus,
+  getVoiceConnection,
   VoiceConnectionStatus,
   entersState, // Add this import
   VoiceConnectionDisconnectReason,
