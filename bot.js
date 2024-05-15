@@ -435,15 +435,20 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      // Create a message with buttons for each soundbite
-      const components = soundboard.map((soundbite) => {
-        const playButton = new ButtonBuilder()
-          .setCustomId(`play-${soundbite.title}`)
-          .setLabel(`${soundbite.title}`)
-          .setStyle(ButtonStyle.Primary);
-
-        return new ActionRowBuilder().addComponents(playButton);
-      });
+      // Create message with buttons for each soundbite
+      const components = [];
+      for (let i = 0; i < soundboard.length; i += 5) {
+        const row = new ActionRowBuilder();
+        const slice = soundboard.slice(i, i + 5);
+        slice.forEach(soundbite => {
+          const playButton = new ButtonBuilder()
+            .setCustomId(`play-${soundbite.title}`)
+            .setLabel(`${soundbite.title}`)
+            .setStyle(ButtonStyle.Primary);
+          row.addComponents(playButton);
+        });
+        components.push(row);
+      }
 
       await interaction.reply({
         content: "Your Soundboard:",
