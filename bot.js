@@ -320,36 +320,29 @@ function retrieveUserIdByUsername(members, username) {
 
 async function addSoundbite(userId, title, url) {
   try {
-    const usersCollection = mongoClient.db("theme_songsDB").collection("userData");
-    await usersCollection.updateOne(
-      { _id: userId },
-      { $push: { soundboard: { title, url } } },
-      { upsert: true },
-    );
-    console.log(`Soundbite added for user ${userId}`);
-  } catch (error) {
+    const soundboardCollection = mongoClient.db("theme_songsDB").collection("soundboard");
+    await soundboardCollection.insertOne({ title, url });
+    console.log(`Soundbite "${title}" added to the soundboard`);
+} catch (error) {
     console.error("Error adding soundbite:", error);
   }
 }
 
 async function deleteSoundbite(userId, title) {
   try {
-    const usersCollection = mongoClient.db("theme_songsDB").collection("userData");
-    await usersCollection.updateOne(
-      { _id: userId },
-      { $pull: { soundboard: { title } } },
-    );
-    console.log(`Soundbite deleted for user ${userId}`);
-  } catch (error) {
+    const soundboardCollection = mongoClient.db("theme_songsDB").collection("soundboard");
+    await soundboardCollection.deleteOne({ title });
+    console.log(`Soundbite "${title}" deleted from the soundboard`);
+} catch (error) {
     console.error("Error deleting soundbite:", error);
   }
 }
 
-async function getSoundboard(userId) {
+async function getSoundboard() {
   try {
-    const usersCollection = mongoClient.db("theme_songsDB").collection("userData");
-    const user = await usersCollection.findOne({ _id: userId });
-    return user ? user.soundboard : [];
+    const soundboardCollection = mongoClient.db("theme_songsDB").collection("soundboard");
+    const soundboard = await soundboardCollection.find({}).toArray();
+    return soundboard;
   } catch (error) {
     console.error("Error fetching soundboard:", error);
     return [];
@@ -432,7 +425,7 @@ client.on("interactionCreate", async (interaction) => {
       });
 
     } else if (interaction.commandName === "view-soundboard") {
-      const soundboard = await getSoundboard(userId);
+      const soundboard = await getSoundboard();
 
       if (soundboard.length === 0) {
         await interaction.reply({
@@ -484,7 +477,7 @@ client.on("interactionCreate", async (interaction) => {
     const [action, title] = interaction.customId.split('-');
 
     if (action === 'play') {
-      const soundboard = await getSoundboard(userId);
+      const soundboard = await getSoundboard();
       const soundbite = soundboard.find(sb => sb.title === title);
 
       if (soundbite) {
