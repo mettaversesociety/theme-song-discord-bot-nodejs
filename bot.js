@@ -318,7 +318,7 @@ function retrieveUserIdByUsername(members, username) {
   }
 }
 
-async function addSoundbite(userId, title, url) {
+async function addSoundbite(title, url) {
   try {
     const soundboardCollection = mongoClient.db("theme_songsDB").collection("soundboard");
     await soundboardCollection.insertOne({ title, url });
@@ -328,7 +328,7 @@ async function addSoundbite(userId, title, url) {
   }
 }
 
-async function deleteSoundbite(userId, title) {
+async function deleteSoundbite(title) {
   try {
     const soundboardCollection = mongoClient.db("theme_songsDB").collection("soundboard");
     await soundboardCollection.deleteOne({ title });
@@ -409,7 +409,7 @@ client.on("interactionCreate", async (interaction) => {
       const title = interaction.options.getString("title");
       const url = interaction.options.getString("url");
 
-      await addSoundbite(userId, title, url);
+      await addSoundbite(title, url);
       await interaction.reply({
         content: `Soundbite "${title}" added!`,
         ephemeral: true
@@ -418,7 +418,7 @@ client.on("interactionCreate", async (interaction) => {
     } else if (interaction.commandName === "delete-soundbite") {
       const title = interaction.options.getString("title");
 
-      await deleteSoundbite(userId, title);
+      await deleteSoundbite(title);
       await interaction.reply({
         content: `Soundbite "${title}" deleted!`,
         ephemeral: true
@@ -439,15 +439,10 @@ client.on("interactionCreate", async (interaction) => {
       const components = soundboard.map((soundbite) => {
         const playButton = new ButtonBuilder()
           .setCustomId(`play-${soundbite.title}`)
-          .setLabel(`Play ${soundbite.title}`)
+          .setLabel(`${soundbite.title}`)
           .setStyle(ButtonStyle.Primary);
 
-        const deleteButton = new ButtonBuilder()
-          .setCustomId(`delete-${soundbite.title}`)
-          .setLabel(`Delete ${soundbite.title}`)
-          .setStyle(ButtonStyle.Danger);
-
-        return new ActionRowBuilder().addComponents(playButton, deleteButton);
+        return new ActionRowBuilder().addComponents(playButton);
       });
 
       await interaction.reply({
@@ -491,13 +486,8 @@ client.on("interactionCreate", async (interaction) => {
           });
         }
       }
-    } else if (action === 'delete') {
-      await deleteSoundbite(userId, title);
-      await interaction.reply({
-        content: `Soundbite "${title}" deleted!`,
-        ephemeral: true,
-      });
-    }
+    } 
+    
   }
 });
 
