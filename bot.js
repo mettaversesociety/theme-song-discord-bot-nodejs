@@ -150,7 +150,7 @@ async function registerCommands() {
   }
 }
 
-async function setMemberThemeSong(userId, url, duration = 10, username) {
+async function setMemberThemeSong(userId, url, duration, username) {
   try {
     const usersCollection = mongoClient
       .db("theme_songsDB")
@@ -370,7 +370,7 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.commandName === "set-theme") {
 
       const url = interaction.options.getString("url");
-      const duration = interaction.options.getInteger("duration");
+      const duration = interaction.options.getInteger("duration") || 10;
       const username = interaction.options.getString("username");
 
       try {
