@@ -52,39 +52,44 @@ client.once("ready", () => {
 const voiceConnections = new Map();
 
 async function maintainConnection(channel) {
-  const key = `${channel.guild.id}-${channel.id}`;
-  if (voiceConnections.has(key)) {
-      console.log('Bot is already connected to this channel.');
-      return voiceConnections.get(key);
+  const key = `${channel.guild.id}`;
+  let connection = voiceConnections.get(key);
+
+  if (connection) {
+      // Check if the bot is in a different channel
+      if (connection.joinConfig.channelId !== channel.id) {
+          // Moving the connection to the new channel
+          connection = connection.rejoin({
+              channelId: channel.id,
+              guildId: channel.guild.id,
+              adapterCreator: channel.guild.voiceAdapterCreator,
+          }).subscribe()
+          console.log(`Moved connection to new channel: ${channel.name}`);
+      } else {
+          console.log('Bot is already connected to this channel.');
+      }
   } else {
-      const connection = joinVoiceChannel({
+      // No connection exists, so join the channel
+      connection = joinVoiceChannel({
           channelId: channel.id,
           guildId: channel.guild.id,
           adapterCreator: channel.guild.voiceAdapterCreator,
       });
-      voiceConnections.set(key, connection);
-
-      connection.on(VoiceConnectionStatus.Disconnected, async () => {
-          try {
-              await Promise.race([
-                  entersState(connection, VoiceConnectionStatus.Signaling, 5_000),
-                  entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
-              ]);
-          } catch (error) {
-              console.log('Disconnecting due to failure to reconnect:', error);
-              connection.destroy();
-              voiceConnections.delete(key);
+      
+      connection.on('stateChange', (oldState, newState) => {
+          if (oldState.status === VoiceConnectionStatus.Disconnected) {
+              connection.rejoin();
           }
       });
 
       connection.on('error', (error) => {
           console.error('Voice connection error:', error);
-          connection.destroy();
-          voiceConnections.delete(key);
       });
 
-      return connection;
+      voiceConnections.set(key, connection);
   }
+
+  return connection;
 }
 
 function disconnectFromChannel(guildId, channelId) {
@@ -601,7 +606,7 @@ client.on("interactionCreate", async (interaction) => {
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
   if (oldState.channelId === newState.channelId) {
-      return; // No change in state or user left a channel
+    return; // No change in state
   }
 
   const member = newState.member;
@@ -610,37 +615,10 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
   if (newChannel && themeSongData) {
       const { url, duration, username } = themeSongData;
-
       try {
-          // Create a new connection if not already connected to the new channel
-          if (!getVoiceConnection(newState.guild.id) || getVoiceConnection(newState.guild.id).joinConfig.channelId !== newState.channelId) {
-              const connection = joinVoiceChannel({
-                  channelId: newChannel.id,
-                  guildId: newChannel.guild.id,
-                  adapterCreator: newChannel.guild.voiceAdapterCreator
-              });
-
-              connection.on(VoiceConnectionStatus.Ready, () => {
-                  console.log(`Successfully connected to ${newChannel.name}`);
-                  playThemeSong(newChannel, url, duration, username);
-              });
-
-              connection.on(VoiceConnectionStatus.Disconnected, () => {
-                  console.log(`Disconnected from ${newChannel.name}`);
-                  if (connection.rejoinAttempts < 5) {
-                      setTimeout(() => {
-                          connection.rejoin();
-                      }, connection.rejoinAttempts * 5000);
-                  }
-              });
-
-              connection.on('error', error => {
-                  console.error(`Connection error: ${error}`);
-              });
-          } else {
-              console.log('Bot is already connected to this channel.');
-              playThemeSong(newChannel, url, duration, username);
-          }
+          const connection = await maintainConnection(newChannel);
+          console.log(`Successfully connected to ${newChannel.name}`);
+          playThemeSong(newChannel, url, duration, username);
       } catch (error) {
           console.error('Error attempting to rejoin or play theme song:', error);
       }
