@@ -608,15 +608,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   const themeSongData = await getMemberThemeSong(member.id);
   const newChannel = newState.guild.channels.cache.get(newState.channelId);
 
-  if (oldState.channelId && (!newState.channelId || newState.channelId !== oldState.channelId)) {
-      // User left the old channel or moved to a new one, clean up the old connection
-      const oldConnection = getVoiceConnection(oldState.guild.id);
-      if (oldConnection) {
-          oldConnection.destroy();
-          console.log(`${member.user.username} left the channel or moved. Old connection destroyed.`);
-      }
-  }
-
   if (newChannel && themeSongData) {
       const { url, duration, username } = themeSongData;
 
