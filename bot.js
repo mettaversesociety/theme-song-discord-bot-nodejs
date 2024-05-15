@@ -282,14 +282,13 @@ distube.on("playSong", (queue, song) => {
 });
 
 function retrieveUserIdByUsername(members, username) {
-  console.log("USERNAME ", username);
+  // console.log("USERNAME ", username);
 
   let normalizedUsername;
 
   if (username) {
     // Check if the username is a mention (starts with <@ and ends with >)
     if (username.startsWith("<@") && username.endsWith(">")) {
-      console.log("PRETTY");
       const userId = username.slice(2, -1); // Remove the <> and parse the ID
       return userId;
     }
@@ -380,7 +379,7 @@ client.on("interactionCreate", async (interaction) => {
           userId = retrieveUserIdByUsername(members, username);
         }
 
-        console.log("User ID:", userId);
+        // console.log("User ID:", userId);
 
         if (userId) {
           // If userId is already found, use it
