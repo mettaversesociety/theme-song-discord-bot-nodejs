@@ -12,7 +12,6 @@ const {
 const ytdl = require("ytdl-core");
 const MongoClient = require("mongodb").MongoClient;
 const ffmpeg = require("ffmpeg-static");
-require('dotenv').config();
 
 process.env.FFMPEG_BINARY = ffmpeg;
 
