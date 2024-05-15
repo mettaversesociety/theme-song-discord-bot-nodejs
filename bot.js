@@ -8,6 +8,7 @@ const {
   createAudioPlayer,
   createAudioResource,
   AudioPlayerStatus,
+  VoiceConnectionStatus,
 } = require("@discordjs/voice");
 const ytdl = require("ytdl-core");
 const MongoClient = require("mongodb").MongoClient;
@@ -572,7 +573,7 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
   } else if (interaction.isButton()) {
-    const userId = interaction.user.id;
+
     const [action, title] = interaction.customId.split('-');
 
     if (action === 'play') {
