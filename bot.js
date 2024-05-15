@@ -187,10 +187,6 @@ async function playSoundBite(interaction, channel, url) {
       await distube.play(channel, url, {
         textChannel: channel,
       });
-
-      // Inform the user that the soundbite is playing
-      await interaction.editReply("Playing your soundbite!");
-
     } catch (error) {
       console.error("Error playing theme song:", error);
       // Inform the user of an error
