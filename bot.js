@@ -211,7 +211,7 @@ async function playSoundBite(interaction, channel, url) {
 
       // const trackInfo = await scdl.getInfo(url);
       const stream = await scdl.download(url);
-      const resource = createAudioResource(stream, { inputType: StreamType.Arbitrary });
+      const resource = createAudioResource(stream);
       const player = createAudioPlayer();
       // const connection = joinVoiceChannel({
       //     channelId: channel.id,
@@ -222,12 +222,6 @@ async function playSoundBite(interaction, channel, url) {
 
       connection.subscribe(player);
       
-      const timeoutId = setTimeout(() => {
-        if (player?.state?.status !== AudioPlayerStatus.Idle) {
-            player.stop();
-        }
-      }, Math.min(duration, trackInfo.duration / 1000) * 1000);
-
       player.on(AudioPlayerStatus.Idle, () => {
         clearTimeout(timeoutId);
       });
