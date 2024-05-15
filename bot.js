@@ -181,7 +181,9 @@ async function getMemberThemeSong(userId) {
 async function playSoundBite(interaction, channel, url) {
   if (url.includes("soundcloud.com")) {
     try {
-      const trackInfo = await scdl.getInfo(url);
+      await interaction.deferUpdate();
+
+      // const trackInfo = await scdl.getInfo(url);
       const stream = await scdl.download(url);
 
       const resource = createAudioResource(stream);
