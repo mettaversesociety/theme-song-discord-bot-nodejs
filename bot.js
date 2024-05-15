@@ -225,7 +225,7 @@ async function playYoutube(channel, url) {
   }
 }
 
-async function playThemeSong(channel, url, duration = 10, username) {
+async function playThemeSong(channel, url, duration, username) {
   if (url.includes("soundcloud.com")) {
     try {
       await distube.play(channel, url, {
@@ -386,7 +386,7 @@ client.on("interactionCreate", async (interaction) => {
           // If userId is already found, use it
           await setMemberThemeSong(userId, url, duration, username);
           await interaction.reply({
-            content: `Theme song set for ${username || interaction.user.username}.`,
+            content: `Theme song set for ${username || interaction.user.username}: max ${duration} seconds.`,
             ephemeral: true,
           });
         } else {
@@ -402,7 +402,7 @@ client.on("interactionCreate", async (interaction) => {
             userId = user.id;
             await setMemberThemeSong(userId, url, duration, username);
             await interaction.reply({
-              content: `Theme song set for ${username || interaction.user.username}.`,
+              content: `Theme song set for ${username || interaction.user.username}: max ${duration} seconds.`,
               ephemeral: true,
             });
           } else {
