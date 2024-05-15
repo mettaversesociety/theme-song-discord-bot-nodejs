@@ -222,10 +222,6 @@ async function playSoundBite(interaction, channel, url) {
 
       connection.subscribe(player);
       
-      player.on(AudioPlayerStatus.Idle, () => {
-        clearTimeout(timeoutId);
-      });
-
       player.on('error', (error) => {
         console.error('AudioPlayer error:', error);
       });
