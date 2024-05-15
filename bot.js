@@ -24,31 +24,6 @@ const client = new Client({
   ],
 });
 
-const { DisTube } = require("distube");
-const { SoundCloudPlugin } = require("@distube/soundcloud");
-const distube = new DisTube(client, {
-  ffmpeg: {
-    path: ffmpeg,
-  },
-  leaveOnEmpty: true,
-  leaveOnFinish: true,
-  leaveOnStop: true,
-  plugins: [new SoundCloudPlugin()],
-});
-
-distube.on("play", (queue) => {
-  const connection = queue.voiceConnection; // Get the voice connection from the queue
-  connection.once("stateChange", (oldState, newState) => {
-    if (newState.status === "disconnected") {
-      console.log("Disconnected!");
-    }
-  });
-});
-
-distube.on("error", (channel, error) => {
-  console.error("DisTube error:", channel, error);
-});
-
 const mongoClient = new MongoClient(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -332,10 +307,6 @@ async function playThemeSong(channel, url, duration, username) {
     }
   }
 }
-
-distube.on("playSong", (queue, song) => {
-  queue.textChannel.send(`Playing ${song.name}`);
-});
 
 function retrieveUserIdByUsername(members, username) {
   // console.log("USERNAME ", username);
