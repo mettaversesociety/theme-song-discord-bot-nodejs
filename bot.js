@@ -119,7 +119,7 @@ const deleteSoundbiteCommand = new SlashCommandBuilder()
   );
 
 const viewSoundboardCommand = new SlashCommandBuilder()
-  .setName("view-soundboard")
+  .setName("soundboard")
   .setDescription("View your soundboard");
 
 const playYoutubeCommand = new SlashCommandBuilder()
@@ -424,7 +424,7 @@ client.on("interactionCreate", async (interaction) => {
         ephemeral: true
       });
 
-    } else if (interaction.commandName === "view-soundboard") {
+    } else if (interaction.commandName === "soundboard") {
       const soundboard = await getSoundboard();
 
       if (soundboard.length === 0) {
