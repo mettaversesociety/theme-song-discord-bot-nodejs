@@ -412,7 +412,7 @@ client.on("interactionCreate", async (interaction) => {
           ephemeral: true,
         });
       }
-    } else if (interaction.commandName === "play") {
+    } else if (interaction.commandName === "yt") {
       const url = interaction.options.getString("url");
 
       const channel = interaction.member.voice.channel;
