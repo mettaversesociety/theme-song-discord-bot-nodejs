@@ -182,29 +182,19 @@ async function playSoundBite(interaction, channel, url) {
   if (url.includes("soundcloud.com")) {
     try {
       // Respond quickly to prevent the "interaction failed" warning
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferUpdate();
 
       await distube.play(channel, url, {
         textChannel: channel,
       });
 
-      // Inform the user that the soundbite is playing
-      const msg = await interaction.editReply("Playing your soundbite!");
-      // Delete the message after 5 seconds
-      setTimeout(() => msg.delete(), 5000);
-
     } catch (error) {
       console.error("Error playing theme song:", error);
-      // Inform the user of an error
-      const errorMsg = await interaction.editReply("There was an error playing the theme song.");
-      // Delete the error message after 5 seconds
-      setTimeout(() => errorMsg.delete(), 5000);
     }
   } else {
-      // Inform the user if the URL is not valid
-      const invalidMsg = await interaction.reply("Please provide a valid SoundCloud URL.");
-      // Delete the message after 5 seconds
-      setTimeout(() => invalidMsg.delete(), 5000);
+    // Respond quickly to prevent the "interaction failed" warning
+    await interaction.deferUpdate();
+    console.log("Invalid SoundCloud URL provided.");
   }
 }
 
