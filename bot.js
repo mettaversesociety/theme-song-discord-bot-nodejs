@@ -58,20 +58,34 @@ async function maintainConnection(channel) {
   if (connection) {
     // Check if the bot is connected to a different channel
     if (connection.joinConfig.channelId !== channel.id) {
-        // Disconnect the old connection and join the new channel
-        connection.destroy();
+        // Destroy the old connection only if it's not already destroyed
+        if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
+            connection.destroy();
+        }
+
+        // Create and store new connection
         connection = joinVoiceChannel({
             channelId: channel.id,
             guildId: channel.guild.id,
             adapterCreator: channel.guild.voiceAdapterCreator,
         });
 
+        connection.on('stateChange', (oldState, newState) => {
+            if (newState.status === VoiceConnectionStatus.Disconnected && newState.reason !== VoiceConnectionDisconnectReason.WebSocketClose) {
+                connection.destroy();
+            }
+        });
+
+        connection.on('error', (error) => {
+            console.error('Voice connection error:', error);
+        });
+
+        voiceConnections.set(key, connection);
         console.log(`Moved connection to new channel: ${channel.name}`);
     } else {
         console.log('Bot is already connected to this channel.');
     }
   } else {
-      // No connection exists, so join the channel
       connection = joinVoiceChannel({
           channelId: channel.id,
           guildId: channel.guild.id,
@@ -79,14 +93,8 @@ async function maintainConnection(channel) {
       });
 
       connection.on('stateChange', (oldState, newState) => {
-          if (oldState.status === VoiceConnectionStatus.Disconnected && newState.status !== VoiceConnectionStatus.Destroyed) {
-              // If the connection gets disconnected, attempt to rejoin the channel
-              connection = joinVoiceChannel({
-                  channelId: channel.id,
-                  guildId: channel.guild.id,
-                  adapterCreator: channel.guild.voiceAdapterCreator,
-              });
-              voiceConnections.set(key, connection);
+          if (newState.status === VoiceConnectionStatus.Disconnected && newState.reason !== VoiceConnectionDisconnectReason.WebSocketClose) {
+              connection.destroy();
           }
       });
 
