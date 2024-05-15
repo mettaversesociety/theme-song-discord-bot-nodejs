@@ -45,6 +45,8 @@ client.once("ready", () => {
   registerCommands();
 });
 
+const voiceConnections = new Map();
+
 async function maintainConnection(channel) {
   const key = `${channel.guild.id}-${channel.id}`;
   if (voiceConnections.has(key)) {
