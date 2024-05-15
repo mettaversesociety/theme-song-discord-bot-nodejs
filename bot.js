@@ -200,28 +200,49 @@ async function playSoundBite(interaction, channel, url) {
 
 async function playYoutube(channel, url) {
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
-    try {
-      const stream = ytdl(url, { quality: "highestaudio" });
-      const resource = createAudioResource(stream);
-      const player = createAudioPlayer();
-      const connection = joinVoiceChannel({
-        channelId: channel.id,
-        guildId: channel.guild.id,
-        adapterCreator: channel.guild.voiceAdapterCreator,
-      });
-      connection.subscribe(player);
-      player.play(resource);
+      try {
+          console.log(`Attempting to play YouTube URL: ${url}`);
+          const stream = ytdl(url, { quality: "highestaudio" });
+          const resource = createAudioResource(stream);
+          const player = createAudioPlayer();
+          const connection = joinVoiceChannel({
+              channelId: channel.id,
+              guildId: channel.guild.id,
+              adapterCreator: channel.guild.voiceAdapterCreator,
+          });
 
-      player.on(AudioPlayerStatus.Idle, () => {
-        connection.destroy(); // Additional cleanup role in case something else causes the player to stop
-      });
+          connection.on("stateChange", (oldState, newState) => {
+              console.log(`Connection transitioned from ${oldState.status} to ${newState.status}`);
+          });
 
-      connection.on("error", (error) => {
-        console.error("Error in Voice Connection: ", error);
-      });
-    } catch (error) {
-      console.error("Error playing theme song:", error);
-    }
+          player.on("stateChange", (oldState, newState) => {
+              console.log(`Player transitioned from ${oldState.status} to ${newState.status}`);
+          });
+
+          connection.on("error", (error) => {
+              console.error("Error in Voice Connection: ", error);
+              connection.destroy();
+          });
+
+          player.on("error", (error) => {
+              console.error("Player Error: ", error);
+              player.stop();
+              connection.destroy();
+          });
+
+          player.on(AudioPlayerStatus.Idle, () => {
+              console.log("Player is idle. Closing connection.");
+              connection.destroy();
+          });
+
+          connection.subscribe(player);
+          player.play(resource);
+
+      } catch (error) {
+          console.error("Error playing YouTube component:", error);
+      }
+  } else {
+      console.log("Invalid YouTube URL provided.");
   }
 }
 
