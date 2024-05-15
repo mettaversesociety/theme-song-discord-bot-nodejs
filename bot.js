@@ -9,6 +9,8 @@ const {
   createAudioResource,
   AudioPlayerStatus,
   VoiceConnectionStatus,
+  entersState, // Add this import
+  VoiceConnectionDisconnectReason,
 } = require("@discordjs/voice");
 const ytdl = require("ytdl-core");
 const MongoClient = require("mongodb").MongoClient;
@@ -224,6 +226,28 @@ async function playSoundBite(interaction, channel, url) {
       
       player.on('error', (error) => {
         console.error('AudioPlayer error:', error);
+      });
+
+      connection.on(VoiceConnectionStatus.Ready, () => {
+        console.log('The voice connection is ready!');
+    });
+
+      connection.on(VoiceConnectionStatus.Disconnected, async (oldState, newState) => {
+          console.error('Disconnected from the voice channel');
+          
+          if (newState.status === VoiceConnectionStatus.Disconnected) {
+              try {
+                  console.log('Attempting to reconnect...');
+                  await entersState(connection, VoiceConnectionStatus.Connecting, 5_000);
+              } catch (error) {
+                  console.error('Unable to connect within 5 seconds', error);
+                  connection.destroy();
+              }
+          }
+      });
+
+      connection.on('error', (error) => {
+          console.error("Voice Connection Error: ", error);
       });
 
     } catch (error) {
