@@ -271,19 +271,32 @@ async function playThemeSong(channel, url, duration, username) {
           guildId: channel.guild.id,
           adapterCreator: channel.guild.voiceAdapterCreator,
       });
+      const connectionId = connection.joinConfig.channelId;
+      
       connection.subscribe(player);
       player.play(resource);
       
-      setTimeout(() => {
-          player.stop(); // Stops playing after the specified duration (in seconds)
-          connection.destroy(); // Optionally destroy the connection immediately after stopping the player
+      // Set timeout to stop the player and destroy the connection
+      const timeoutId = setTimeout(() => {
+          if (connection.state.status !== 'destroyed') {
+              player.stop(); // Stops playing after the specified duration (in seconds)
+              connection.destroy(); // Optionally destroy the connection immediately after stopping the player
+          }
       }, duration * 1000);
       
       player.on(AudioPlayerStatus.Idle, () => {
-          connection.destroy(); // Additional cleanup role in case something else causes the player to stop
+          clearTimeout(timeoutId); // Clear the timeout to prevent double-destroy attempts
+          if (connection.state.status !== 'destroyed') {
+              connection.destroy(); // Additional cleanup role in case something else causes the player to stop
+          }
       });
+      
       connection.on("error", (error) => {
           console.error("Error in Voice Connection: ", error);
+          clearTimeout(timeoutId);
+          if (connection.state.status !== 'destroyed') {
+              connection.destroy(); // Cleanup in case of error
+          }
       });
     } catch (error) {
         console.error("Error playing theme song:", error);
