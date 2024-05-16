@@ -43,11 +43,45 @@ async function connectToMongoDB() {
 }
 
 connectToMongoDB();
+const rolesCollection = mongoClient.db("theme_songsDB").collection("approvedRoles");
+const usersCollection = mongoClient.db("theme_songsDB").collection("approvedUsers");
 
-client.once("ready", () => {
+client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}!`);
+
+  try {
+      await loadApprovedRolesCache();
+      await loadApprovedUsersCache();
+  } catch (error) {
+      console.error("Error loading caches on startup:", error);
+  }
+
   registerCommands();
 });
+
+async function loadApprovedRolesCache() {
+  try {
+      const roles = await rolesCollection.find({}).toArray();
+      roles.forEach(({ guildId, roleIds }) => {
+          approvedRolesCache.set(guildId, roleIds);
+      });
+      console.log('Approved roles cache loaded from MongoDB.');
+  } catch (error) {
+      console.error('Error loading approved roles cache:', error);
+  }
+}
+
+async function loadApprovedUsersCache() {
+  try {
+      const users = await usersCollection.find({}).toArray();
+      users.forEach(({ guildId, userIds }) => {
+          approvedUsersCache.set(guildId, userIds);
+      });
+      console.log('Approved users cache loaded from MongoDB.');
+  } catch (error) {
+      console.error('Error loading approved users cache:', error);
+  }
+}
 
 const voiceConnections = new Map();
 const approvedRolesCache = new Map(); // Store approved roles by guild ID
@@ -88,6 +122,11 @@ async function approveRoleOrUser(interaction) {
       if (!approvedRoles.includes(role.id)) {
           approvedRoles.push(role.id);
           approvedRolesCache.set(interaction.guild.id, approvedRoles);
+          await rolesCollection.updateOne(
+            { guildId: interaction.guild.id },
+            { $addToSet: { roleIds: role.id } },
+            { upsert: true }
+          );
       }
       await interaction.reply({
           content: `Role ${role.name} has been approved to manage theme songs.`,
@@ -100,6 +139,11 @@ async function approveRoleOrUser(interaction) {
       if (!approvedUsers.includes(user.id)) {
           approvedUsers.push(user.id);
           approvedUsersCache.set(interaction.guild.id, approvedUsers);
+          await usersCollection.updateOne(
+            { guildId: interaction.guild.id },
+            { $addToSet: { userIds: user.id } },
+            { upsert: true }
+          );
       }
       await interaction.reply({
           content: `User ${user.tag} has been approved to manage theme songs.`,
@@ -273,7 +317,7 @@ async function setMemberThemeSong(userId, url, duration, username) {
   try {
     const usersCollection = mongoClient
       .db("theme_songsDB")
-      .collection("userData");
+      .collection("themeSongs");
     await usersCollection.updateOne(
       { _id: userId },
       { $set: { theme_song: { url, duration, username } } },
@@ -288,7 +332,7 @@ async function getMemberThemeSong(userId) {
   try {
     const usersCollection = mongoClient
       .db("theme_songsDB")
-      .collection("userData");
+      .collection("themeSongs");
     const user = await usersCollection.findOne({ _id: userId });
     return user ? user.theme_song : null;
   } catch (error) {
