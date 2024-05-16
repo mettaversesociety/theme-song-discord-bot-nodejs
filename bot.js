@@ -630,10 +630,31 @@ function retrieveUserIdByUsername(members, username) {
 async function addSoundbite(title, url) {
   try {
     const soundboardCollection = mongoClient.db("theme_songsDB").collection("soundboard");
+    
+    // Check for existing soundbite with the same title
+    const existingSoundbite = await soundboardCollection.findOne({ title });
+    if (existingSoundbite) {
+      console.log(`Soundbite with title "${title}" already exists.`);
+      return {
+        success: false,
+        message: `A soundbite with the title "${title}" already exists. Please choose a different title.`
+      };
+    }
+    
+    // Insert new soundbite if no duplicate is found
     await soundboardCollection.insertOne({ title, url });
     console.log(`Soundbite "${title}" added to the soundboard`);
-} catch (error) {
+    
+    return {
+      success: true,
+      message: `Soundbite "${title}" added successfully!`
+    };
+  } catch (error) {
     console.error("Error adding soundbite:", error);
+    return {
+      success: false,
+      message: "An error occurred. Try using a different title."
+    };
   }
 }
 
@@ -738,9 +759,11 @@ client.on("interactionCreate", async (interaction) => {
       const title = interaction.options.getString("title");
       const url = interaction.options.getString("url");
 
-      await addSoundbite(title, url);
+      // Call the addSoundbite function and handle the response
+      const response = await addSoundbite(title, url);
+
       await interaction.reply({
-        content: `Soundbite "${title}" added!`,
+        content: response.message,
         ephemeral: true
       });
 
