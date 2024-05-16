@@ -231,6 +231,8 @@ async function maintainConnection(channel) {
       });
       setupConnectionEvents(connection);
       voiceConnections.set(channel.guild.id, connection);
+    } else {
+      console.log('Bot is already connected to this channel.');
     }
   } else {
     connection = joinVoiceChannel({
