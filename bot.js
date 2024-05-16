@@ -248,7 +248,7 @@ async function maintainConnection(channel) {
         voiceConnections.set(key, connection);
         // console.log(`Moved connection to new channel: ${channel.name}`);
     } else {
-        // console.log('Bot is already connected to this channel.');
+        console.log('Bot is already connected to this channel.');
     }
   } else {
       connection = joinVoiceChannel({
@@ -848,7 +848,7 @@ client.on("interactionCreate", async (interaction) => {
         ephemeral: true,
       });
 
-      await sendSoundboard(interaction, soundboard, currentPage, totalPages);
+      // await sendSoundboard(interaction, soundboard, currentPage, totalPages);
 
     } else if (interaction.commandName === "yt") {
       const url = interaction.options.getString("url");
@@ -888,7 +888,7 @@ client.on("interactionCreate", async (interaction) => {
         }
       }
     } else if (action === 'previous' || action === 'next') {
-        const state = soundboardState[interaction.user.id];
+        const state = soundboardState[userId];
         if (state) {
             const page = action === 'previous' ? state.page - 1 : state.page + 1;
             const { soundboard, currentPage, totalPages } = await getSoundboard(page);
@@ -953,32 +953,32 @@ async function sendSoundboard(interaction, soundboard, currentPage, totalPages, 
   }
 }
 
-client.on('messageCreate', async (message) => {
-  if (message.partial) {
-      // If the message is a partial, you may want to fetch the complete message:
-      try {
-          await message.fetch();
-          console.log('Message fetched and is now complete: ', message.content);
-      } catch (error) {
-          console.error('Something went wrong while fetching the message: ', error);
-      }
-  } else {
-      console.log('Received a message: ', message.content);
-  }
-});
+// client.on('messageCreate', async (message) => {
+//   if (message.partial) {
+//       // If the message is a partial, you may want to fetch the complete message:
+//       try {
+//           await message.fetch();
+//           console.log('Message fetched and is now complete: ', message.content);
+//       } catch (error) {
+//           console.error('Something went wrong while fetching the message: ', error);
+//       }
+//   } else {
+//       console.log('Received a message: ', message.content);
+//   }
+// });
 
-client.on('messageDelete', async (message) => {
-  if (message.partial) {
-      try {
-          const fullMessage = await message.fetch();
-          console.log(`Message was deleted: ${fullMessage.content}`);
-      } catch (error) {
-          console.error('Error fetching the full message: ', error);
-      }
-  } else {
-      console.log(`Message was deleted: ${message.content}`);
-  }
-});
+// client.on('messageDelete', async (message) => {
+//   if (message.partial) {
+//       try {
+//           const fullMessage = await message.fetch();
+//           console.log(`Message was deleted: ${fullMessage.content}`);
+//       } catch (error) {
+//           console.error('Error fetching the full message: ', error);
+//       }
+//   } else {
+//       console.log(`Message was deleted: ${message.content}`);
+//   }
+// });
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
   if (oldState.channelId === newState.channelId) {
@@ -992,7 +992,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   if (newChannel && themeSongData) {
       const { url, duration, username } = themeSongData;
       try {
-          const connection = await maintainConnection(newChannel);
+          // const connection = await maintainConnection(newChannel);
           console.log(`Successfully connected to ${newChannel.name}`);
           playThemeSong(newChannel, url, duration, username);
       } catch (error) {
