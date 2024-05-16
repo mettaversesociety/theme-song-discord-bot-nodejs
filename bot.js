@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { Client, GatewayIntentBits, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
+const { Client, GatewayIntentBits, Partials, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { SlashCommandBuilder } = require("@discordjs/builders");
 const { REST } = require("@discordjs/rest");
 const { Routes } = require("discord-api-types/v9");
@@ -26,6 +26,11 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMembers,
   ],
+  partials: [
+    Partials.Message, // Enable partial messages
+    Partials.Channel, // Enable partial channels
+    Partials.Reaction // Enable partial reactions
+],
 });
 
 const mongoClient = new MongoClient(process.env.MONGODB_URI, {
@@ -43,6 +48,7 @@ async function connectToMongoDB() {
 }
 
 connectToMongoDB();
+
 const rolesCollection = mongoClient.db("theme_songsDB").collection("approvedRoles");
 const usersCollection = mongoClient.db("theme_songsDB").collection("approvedUsers");
 
@@ -86,6 +92,7 @@ async function loadApprovedUsersCache() {
 const voiceConnections = new Map();
 const approvedRolesCache = new Map(); // Store approved roles by guild ID
 const approvedUsersCache = new Map(); // Store approved users by guild ID
+const soundboardState = {}; // In-memory state to track paginated soundboard pages
 
 async function hasApprovedRole(member) {
   const approvedRoles = approvedRolesCache.get(member.guild.id) || [];
@@ -679,14 +686,32 @@ async function deleteSoundbite(title) {
   }
 }
 
-async function getSoundboard() {
+const itemsPerPage = 25; // Number of items per page
+
+async function getSoundboard(page = 0) {
   try {
     const soundboardCollection = mongoClient.db("theme_songsDB").collection("soundboard");
-    const soundboard = await soundboardCollection.find({}).toArray();
-    return soundboard;
+    
+    const totalItems = await soundboardCollection.countDocuments();
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+
+    const soundboard = await soundboardCollection.find({})
+        .skip(page * itemsPerPage)
+        .limit(itemsPerPage)
+        .toArray();
+
+    return {
+        soundboard,
+        currentPage: page,
+        totalPages,
+    };
   } catch (error) {
     console.error("Error fetching soundboard:", error);
-    return [];
+    return {
+      soundboard: [],
+      currentPage: 0,
+      totalPages: 0,
+    };
   }
 }
 
@@ -788,7 +813,8 @@ client.on("interactionCreate", async (interaction) => {
       });
 
     } else if (interaction.commandName === "soundboard") {
-      const soundboard = await getSoundboard();
+      const initialPage = 0;
+      const { soundboard, currentPage, totalPages } = await getSoundboard(initialPage);
 
       if (soundboard.length === 0) {
         await interaction.reply({
@@ -797,6 +823,9 @@ client.on("interactionCreate", async (interaction) => {
         });
         return;
       }
+
+      // Store state for the user
+      soundboardState[userId] = { page: currentPage, totalPages };
 
       // Create message with buttons for each soundbite
       const components = [];
@@ -818,6 +847,9 @@ client.on("interactionCreate", async (interaction) => {
         components,
         ephemeral: true,
       });
+
+      await sendSoundboard(interaction, soundboard, currentPage, totalPages);
+
     } else if (interaction.commandName === "yt") {
       const url = interaction.options.getString("url");
 
@@ -836,12 +868,13 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
   } else if (interaction.isButton()) {
-
+    const userId = interaction.user.id;
     const [action, title] = interaction.customId.split('-');
 
     if (action === 'play') {
-      const soundboard = await getSoundboard();
-      const soundbite = soundboard.find(sb => sb.title === title);
+      const state = soundboardState[userId];
+      const soundboard = await getSoundboard(state.page);
+      const soundbite = soundboard.soundboard.find(sb => sb.title === title);
 
       if (soundbite) {
         const channel = interaction.member.voice.channel;
@@ -854,8 +887,96 @@ client.on("interactionCreate", async (interaction) => {
           });
         }
       }
-    } 
-    
+    } else if (action === 'previous' || action === 'next') {
+        const state = soundboardState[interaction.user.id];
+        if (state) {
+            const page = action === 'previous' ? state.page - 1 : state.page + 1;
+            const { soundboard, currentPage, totalPages } = await getSoundboard(page);
+            state.page = currentPage;
+
+            await sendSoundboard(interaction, soundboard, currentPage, totalPages, true);
+        }
+      }
+    }
+});
+
+async function sendSoundboard(interaction, soundboard, currentPage, totalPages, edit = false) {
+  const components = [];
+
+  // Create soundboard buttons (5x5 grid)
+  for (let i = 0; i < soundboard.length; i += 5) {
+      const row = new ActionRowBuilder();
+      const slice = soundboard.slice(i, i + 5);
+      slice.forEach(soundbite => {
+          const playButton = new ButtonBuilder()
+              .setCustomId(`play-${soundbite.title}`)
+              .setLabel(`${soundbite.title}`)
+              .setStyle(ButtonStyle.Primary);
+          row.addComponents(playButton);
+      });
+      components.push(row);
+  }
+
+  // Create pagination row
+  const paginationRow = new ActionRowBuilder();
+
+  // Previous Page Button
+  const prevButton = new ButtonBuilder()
+      .setCustomId('previous-page')
+      .setLabel('Previous')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(currentPage === 0);
+  paginationRow.addComponents(prevButton);
+
+  // Next Page Button
+  const nextButton = new ButtonBuilder()
+      .setCustomId('next-page')
+      .setLabel('Next')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(currentPage === totalPages - 1);
+  paginationRow.addComponents(nextButton);
+
+  components.push(paginationRow);
+
+  // Send initial message or update existing message
+  if (edit) {
+      await interaction.update({
+          content: `Your Soundboard (Page ${currentPage + 1} of ${totalPages}):`,
+          components: components,
+      });
+  } else {
+      await interaction.reply({
+          content: `Your Soundboard (Page ${currentPage + 1} of ${totalPages}):`,
+          components: components,
+          ephemeral: true,
+      });
+  }
+}
+
+client.on('messageCreate', async (message) => {
+  if (message.partial) {
+      // If the message is a partial, you may want to fetch the complete message:
+      try {
+          await message.fetch();
+          console.log('Message fetched and is now complete: ', message.content);
+      } catch (error) {
+          console.error('Something went wrong while fetching the message: ', error);
+      }
+  } else {
+      console.log('Received a message: ', message.content);
+  }
+});
+
+client.on('messageDelete', async (message) => {
+  if (message.partial) {
+      try {
+          const fullMessage = await message.fetch();
+          console.log(`Message was deleted: ${fullMessage.content}`);
+      } catch (error) {
+          console.error('Error fetching the full message: ', error);
+      }
+  } else {
+      console.log(`Message was deleted: ${message.content}`);
   }
 });
 
