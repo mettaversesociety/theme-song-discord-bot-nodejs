@@ -239,9 +239,9 @@ async function maintainConnection(channel) {
         });
 
         voiceConnections.set(key, connection);
-        console.log(`Moved connection to new channel: ${channel.name}`);
+        // console.log(`Moved connection to new channel: ${channel.name}`);
     } else {
-        console.log('Bot is already connected to this channel.');
+        // console.log('Bot is already connected to this channel.');
     }
   } else {
       connection = joinVoiceChannel({
@@ -581,8 +581,6 @@ async function playThemeSong(channel, url, duration, username) {
 }
 
 function retrieveUserIdByUsername(members, username) {
-  // console.log("USERNAME ", username);
-
   let normalizedUsername;
 
   if (username) {
@@ -607,8 +605,7 @@ function retrieveUserIdByUsername(members, username) {
   }
 
   // Find member by username or nickname (display name)
-  const user = memberList.find((member) => {
-    // console.log("MMM ", member);
+    const user = memberList.find((member) => {
     const actualUsername = member.user && member.user.username;
     const discriminator = member.user && member.user.discriminator;
     const memberNickname = member.user && member.user.globalName;
@@ -670,7 +667,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     else if (interaction.commandName === "disapprove-role-or-user") {
-      await approveRoleOrUser(interaction);
+      await disapproveRoleOrUser(interaction);
     }
 
 
