@@ -631,6 +631,17 @@ async function addSoundbite(title, url) {
   try {
     const soundboardCollection = mongoClient.db("theme_songsDB").collection("soundboard");
     
+    // Regex pattern to check if URL is a SoundCloud URL
+    const soundcloudRegex = /^(https?:\/\/)?(www\.)?(soundcloud\.com)\/[\w\-]+\/[\w\-]+(?=$|[?])/;
+
+    // Check if the URL is a valid SoundCloud URL
+    if (!soundcloudRegex.test(url)) {
+      return {
+        success: false,
+        message: "The URL provided is not a valid SoundCloud URL. Please provide a valid SoundCloud URL."
+      };
+    }
+
     // Check for existing soundbite with the same title
     const existingSoundbite = await soundboardCollection.findOne({ title });
     if (existingSoundbite) {
@@ -653,7 +664,7 @@ async function addSoundbite(title, url) {
     console.error("Error adding soundbite:", error);
     return {
       success: false,
-      message: "An error occurred. Try using a different title."
+      message: "An error occurred while adding the soundbite. Please try again later."
     };
   }
 }
