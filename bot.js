@@ -50,6 +50,63 @@ client.once("ready", () => {
 });
 
 const voiceConnections = new Map();
+const approvedRolesCache = new Map(); // Store approved roles by guild ID
+const approvedUsersCache = new Map(); // Store approved users by guild ID
+
+async function hasApprovedRole(member) {
+  const approvedRoles = approvedRolesCache.get(member.guild.id) || [];
+  const approvedUsers = approvedUsersCache.get(member.guild.id) || [];
+  return approvedUsers.includes(member.id) || member.roles.cache.some(role => approvedRoles.includes(role.id));
+}
+
+async function approveRoleOrUser(interaction) {
+  const member = interaction.guild.members.cache.get(interaction.user.id);
+  const isOwner = interaction.guild.ownerId === interaction.user.id;
+  const hasPermission = isOwner || await hasApprovedRole(member);
+
+  if (!hasPermission) {
+      await interaction.reply({
+          content: "You do not have permission to approve roles or users.",
+          ephemeral: true,
+      });
+      return;
+  }
+
+  const role = interaction.options.getRole("role");
+  const user = interaction.options.getUser("user");
+
+  if (!role && !user) {
+      await interaction.reply({
+          content: "You must specify a role or a user to approve.",
+          ephemeral: true,
+      });
+      return;
+  }
+
+  if (role) {
+      let approvedRoles = approvedRolesCache.get(interaction.guild.id) || [];
+      if (!approvedRoles.includes(role.id)) {
+          approvedRoles.push(role.id);
+          approvedRolesCache.set(interaction.guild.id, approvedRoles);
+      }
+      await interaction.reply({
+          content: `Role ${role.name} has been approved to manage theme songs.`,
+          ephemeral: true,
+      });
+  }
+
+  if (user) {
+      let approvedUsers = approvedUsersCache.get(interaction.guild.id) || [];
+      if (!approvedUsers.includes(user.id)) {
+          approvedUsers.push(user.id);
+          approvedUsersCache.set(interaction.guild.id, approvedUsers);
+      }
+      await interaction.reply({
+          content: `User ${user.tag} has been approved to manage theme songs.`,
+          ephemeral: true,
+      });
+  }
+}
 
 async function maintainConnection(channel) {
   const key = `${channel.guild.id}`;
@@ -116,6 +173,20 @@ function disconnectFromChannel(guildId, channelId) {
       voiceConnections.delete(key);
   }
 }
+
+const approveRoleOrUserCommand = new SlashCommandBuilder()
+  .setName("approve-role-or-user")
+  .setDescription("Approve a role or user to manage theme songs")
+  .addRoleOption((option) =>
+      option.setName("role")
+          .setDescription("The role to approve")
+          .setRequired(false),
+  )
+  .addUserOption((option) =>
+      option.setName("user")
+          .setDescription("The user to approve")
+          .setRequired(false),
+  );
 
 const setThemeCommand = new SlashCommandBuilder()
   .setName("set-theme")
@@ -184,6 +255,7 @@ async function registerCommands() {
     const rest = new REST({ version: "9" }).setToken(process.env.DISCORD_TOKEN);
     await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), {
       body: [
+        approveRoleOrUserCommand.toJSON(),
         setThemeCommand.toJSON(),
         addSoundbiteCommand.toJSON(),
         deleteSoundbiteCommand.toJSON(),
@@ -477,7 +549,11 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.isCommand()) {
     let userId = interaction.user.id;
 
-    if (interaction.commandName === "set-theme") {
+    if (interaction.commandName === "approve-role-or-user") {
+      await approveRoleOrUser(interaction);
+    }
+
+    else if (interaction.commandName === "set-theme") {
 
       const url = interaction.options.getString("url");
       const duration = interaction.options.getInteger("duration") || 10;
@@ -487,18 +563,20 @@ client.on("interactionCreate", async (interaction) => {
         // Fetch all members
         const members = await interaction.guild.members.fetch();
         if (username) {
-          if (interaction.guild.ownerId !== interaction.user.id) {
+          const member = interaction.guild.members.cache.get(interaction.user.id);
+          const isOwner = interaction.guild.ownerId === interaction.user.id;
+          const hasPermission = isOwner || await hasApprovedRole(member);
+
+          if (!hasPermission) {
               // If not server owner, discard the username argument
               await interaction.reply({
                   content: "You do not have permission to set theme songs for other users.",
                   ephemeral: true,
               });
               return;
-          } else {
-            console.log("OWNER")
-            userId = retrieveUserIdByUsername(members, username);
-          }
-
+          } 
+          
+          userId = retrieveUserIdByUsername(members, username);
         }
 
         if (userId) {
