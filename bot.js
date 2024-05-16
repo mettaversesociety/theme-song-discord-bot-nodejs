@@ -407,9 +407,7 @@ async function playSoundBite(interaction, channel, url) {
   if (url.includes("soundcloud.com")) {
     try {
       await interaction.deferUpdate();
-
       const connection = await maintainConnection(channel);
-
       // const trackInfo = await scdl.getInfo(url);
       const stream = await scdl.download(url);
       const resource = createAudioResource(stream);
@@ -431,22 +429,21 @@ async function playSoundBite(interaction, channel, url) {
 }
 
 async function playYoutube(channel, url) {
-  const connection = await maintainConnection(channel);
-
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
-      try {
-          console.log(`Attempting to play YouTube URL: ${url}`);
-          const stream = ytdl(url, { quality: "highestaudio" });
-          const resource = createAudioResource(stream);
-          const player = createAudioPlayer();
+    try {
+      const connection = await maintainConnection(channel);  
+      console.log(`Attempting to play YouTube URL: ${url}`);
+      const stream = ytdl(url, { quality: "highestaudio" });
+      const resource = createAudioResource(stream);
+      const player = createAudioPlayer();
 
-          connection.subscribe(player);
-          player.play(resource);
+      connection.subscribe(player);
+      player.play(resource);
 
-          setupPlayerEvents(player, connection)
-        } catch (error) {
-          console.error("Error playing YouTube component:", error);
-      }
+      setupPlayerEvents(player, connection)
+    } catch (error) {
+        console.error("Error playing YouTube component:", error);
+    }
   } else {
       console.log("Invalid YouTube URL provided.");
   }
@@ -454,7 +451,6 @@ async function playYoutube(channel, url) {
 
 async function playThemeSong(channel, url, duration, username) {
   try {
-    await interaction.deferUpdate();
     const connection = await maintainConnection(channel);
     let stream, resource;
 
