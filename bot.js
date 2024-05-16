@@ -152,6 +152,63 @@ async function approveRoleOrUser(interaction) {
   }
 }
 
+async function disapproveRoleOrUser(interaction) {
+  const member = interaction.guild.members.cache.get(interaction.user.id);
+  const isOwner = interaction.guild.ownerId === interaction.user.id;
+  const hasPermission = isOwner || await hasApprovedRole(member);
+
+  if (!hasPermission) {
+      await interaction.reply({
+          content: "You do not have permission to disapprove roles or users.",
+          ephemeral: true,
+      });
+      return;
+  }
+
+  const role = interaction.options.getRole("role");
+  const user = interaction.options.getUser("user");
+
+  if (!role && !user) {
+      await interaction.reply({
+          content: "You must specify a role or a user to disapprove.",
+          ephemeral: true,
+      });
+      return;
+  }
+
+  if (role) {
+      let approvedRoles = approvedRolesCache.get(interaction.guild.id) || [];
+      if (approvedRoles.includes(role.id)) {
+          approvedRoles = approvedRoles.filter(id => id !== role.id);
+          approvedRolesCache.set(interaction.guild.id, approvedRoles);
+          await rolesCollection.updateOne(
+              { guildId: interaction.guild.id },
+              { $pull: { roleIds: role.id } }
+          );
+      }
+      await interaction.reply({
+          content: `Role ${role.name} has been disapproved from managing theme songs.`,
+          ephemeral: true,
+      });
+  }
+
+  if (user) {
+      let approvedUsers = approvedUsersCache.get(interaction.guild.id) || [];
+      if (approvedUsers.includes(user.id)) {
+          approvedUsers = approvedUsers.filter(id => id !== user.id);
+          approvedUsersCache.set(interaction.guild.id, approvedUsers);
+          await usersCollection.updateOne(
+              { guildId: interaction.guild.id },
+              { $pull: { userIds: user.id } }
+          );
+      }
+      await interaction.reply({
+          content: `User ${user.tag} has been disapproved from managing theme songs.`,
+          ephemeral: true,
+      });
+  }
+}
+
 async function maintainConnection(channel) {
   const key = `${channel.guild.id}`;
   let connection = voiceConnections.get(key);
@@ -232,6 +289,20 @@ const approveRoleOrUserCommand = new SlashCommandBuilder()
           .setRequired(false),
   );
 
+  const disapproveRoleOrUserCommand = new SlashCommandBuilder()
+  .setName("disapprove-role-or-user")
+  .setDescription("Disapprove a role or user to manage theme songs")
+  .addRoleOption((option) =>
+      option.setName("role")
+          .setDescription("The role to disapprove")
+          .setRequired(false),
+  )
+  .addUserOption((option) =>
+      option.setName("user")
+          .setDescription("The user to disapprove")
+          .setRequired(false),
+  );
+
 const setThemeCommand = new SlashCommandBuilder()
   .setName("set-theme")
   .setDescription("Set a user's theme song")
@@ -300,6 +371,7 @@ async function registerCommands() {
     await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), {
       body: [
         approveRoleOrUserCommand.toJSON(),
+        disapproveRoleOrUserCommand.toJSON(),
         setThemeCommand.toJSON(),
         addSoundbiteCommand.toJSON(),
         deleteSoundbiteCommand.toJSON(),
@@ -596,6 +668,11 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.commandName === "approve-role-or-user") {
       await approveRoleOrUser(interaction);
     }
+
+    else if (interaction.commandName === "disapprove-role-or-user") {
+      await approveRoleOrUser(interaction);
+    }
+
 
     else if (interaction.commandName === "set-theme") {
 
