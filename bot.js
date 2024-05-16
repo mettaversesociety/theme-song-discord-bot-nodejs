@@ -217,60 +217,43 @@ async function disapproveRoleOrUser(interaction) {
 }
 
 async function maintainConnection(channel) {
-  const key = `${channel.guild.id}`;
-  let connection = voiceConnections.get(key);
+  let connection = getVoiceConnection(channel.guild.id);
 
   if (connection) {
-    // Check if the bot is connected to a different channel
     if (connection.joinConfig.channelId !== channel.id) {
-        // Destroy the old connection only if it's not already destroyed
-        if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
-            connection.destroy();
-        }
-
-        // Create and store new connection
-        connection = joinVoiceChannel({
-            channelId: channel.id,
-            guildId: channel.guild.id,
-            adapterCreator: channel.guild.voiceAdapterCreator,
-        });
-
-        connection.on('stateChange', (oldState, newState) => {
-            if (newState.status === VoiceConnectionStatus.Disconnected && newState.reason !== VoiceConnectionDisconnectReason.WebSocketClose) {
-                connection.destroy();
-            }
-        });
-
-        connection.on('error', (error) => {
-            console.error('Voice connection error:', error);
-        });
-
-        voiceConnections.set(key, connection);
-        // console.log(`Moved connection to new channel: ${channel.name}`);
-    } else {
-        console.log('Bot is already connected to this channel.');
-    }
-  } else {
+      if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
+          connection.destroy();
+      }
       connection = joinVoiceChannel({
           channelId: channel.id,
           guildId: channel.guild.id,
           adapterCreator: channel.guild.voiceAdapterCreator,
       });
-
-      connection.on('stateChange', (oldState, newState) => {
-          if (newState.status === VoiceConnectionStatus.Disconnected && newState.reason !== VoiceConnectionDisconnectReason.WebSocketClose) {
-              connection.destroy();
-          }
-      });
-
-      connection.on('error', (error) => {
-          console.error('Voice connection error:', error);
-      });
-
-      voiceConnections.set(key, connection);
+      setupConnectionEvents(connection);
+      voiceConnections.set(channel.guild.id, connection);
+    }
+  } else {
+    connection = joinVoiceChannel({
+        channelId: channel.id,
+        guildId: channel.guild.id,
+        adapterCreator: channel.guild.voiceAdapterCreator,
+    });
+    setupConnectionEvents(connection);
+    voiceConnections.set(channel.guild.id, connection);
   }
 
   return connection;
+}
+
+function setupConnectionEvents(connection) {
+  connection.on('stateChange', (oldState, newState) => {
+      if (newState.status === VoiceConnectionStatus.Disconnected && newState.reason !== 'WebSocketClose') {
+          connection.destroy();
+      }
+  });
+  connection.on('error', (error) => {
+      console.error('Voice connection error:', error);
+  });
 }
 
 function disconnectFromChannel(guildId, channelId) {
@@ -436,32 +419,7 @@ async function playSoundBite(interaction, channel, url) {
 
       connection.subscribe(player);
       
-      player.on('error', (error) => {
-        console.error('AudioPlayer error:', error);
-      });
-
-      connection.on(VoiceConnectionStatus.Ready, () => {
-        console.log('The voice connection is ready!');
-    });
-
-      connection.on(VoiceConnectionStatus.Disconnected, async (oldState, newState) => {
-          console.error('Disconnected from the voice channel');
-          
-          if (newState.status === VoiceConnectionStatus.Disconnected) {
-              try {
-                  console.log('Attempting to reconnect...');
-                  await entersState(connection, VoiceConnectionStatus.Connecting, 5_000);
-              } catch (error) {
-                  console.error('Unable to connect within 5 seconds', error);
-                  connection.destroy();
-              }
-          }
-      });
-
-      connection.on('error', (error) => {
-          console.error("Voice Connection Error: ", error);
-      });
-
+      setupPlayerEvents(player, connection)
     } catch (error) {
       console.error("Error playing soundbite:", error);
     }
@@ -485,29 +443,8 @@ async function playYoutube(channel, url) {
           connection.subscribe(player);
           player.play(resource);
 
-          player.on("stateChange", (oldState, newState) => {
-              console.log(`Player transitioned from ${oldState.status} to ${newState.status}`);
-          });
-
-          player.on(AudioPlayerStatus.Idle, () => {
-              // Keep connection alive
-              player.stop();
-          });
-
-          player.on("error", (error) => {
-              console.error('Player Error: ', error);
-              player.stop();
-          });
-
-          connection.on("stateChange", (oldState, newState) => {
-              console.log(`Connection transitioned from ${oldState.status} to ${newState.status}`);
-          });
-
-          connection.on("error", (error) => {
-              console.error("Error in Voice Connection: ", error);
-          });
-
-      } catch (error) {
+          setupPlayerEvents(player, connection)
+        } catch (error) {
           console.error("Error playing YouTube component:", error);
       }
   } else {
@@ -516,75 +453,68 @@ async function playYoutube(channel, url) {
 }
 
 async function playThemeSong(channel, url, duration, username) {
-  const connection = await maintainConnection(channel);
+  try {
+    await interaction.deferUpdate();
+    const connection = await maintainConnection(channel);
+    let stream, resource;
 
-  if (url.includes("soundcloud.com")) {
-      try {
-          // const trackInfo = await scdl.getInfo(url);
-          const stream = await scdl.download(url);
-          const resource = createAudioResource(stream);
-          const player = createAudioPlayer();
+    if (url.includes("soundcloud.com")) {
+        stream = await scdl.download(url);
+    } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+        stream = ytdl(url, { quality: 'highestaudio' });
+    } else {
+        console.log("Invalid URL provided.");
+        return;
+    }
 
-          connection.subscribe(player);
-          player.play(resource);
+    resource = createAudioResource(stream);
+    const player = createAudioPlayer();
+    connection.subscribe(player);
+    player.play(resource);
 
-          // Set timeout to stop the player but keep the connection alive
-          const timeoutId = setTimeout(() => {
-              if (player?.state?.status !== AudioPlayerStatus.Idle) {
-                  player.stop(); // Stops playing after the specified duration (in seconds)
-              }
-          }, duration * 1000);
+    const timeoutId = setTimeout(() => {
+        if (player.state.status !== AudioPlayerStatus.Idle) {
+            player.stop();
+        }
+    }, duration * 1000);
 
-          player.on(AudioPlayerStatus.Idle, () => {
-            if (timeoutId) clearTimeout(timeoutId); // Clear the timeout to prevent double-destroy attempts
-          });
+    player.on(AudioPlayerStatus.Idle, () => {
+        clearTimeout(timeoutId);
+    });
+    setupPlayerEvents(player, connection, timeoutId);
 
-          player.on('error', (error) => {
-              console.error('AudioPlayer error:', error);
-          });
-
-          connection.on("error", (error) => {
-              console.error("Error in Voice Connection: ", error);
-              if (timeoutId) clearTimeout(timeoutId); // Clear the timeout to prevent double-destroy attempts
-          });
-      } catch (error) {
-          console.error("Error playing theme song:", error);
-          if (timeoutId) clearTimeout(timeoutId); // Clear the timeout to prevent double-destroy attempts
-      }
-  } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
-      try {
-          const stream = ytdl(url, { quality: "highestaudio" });
-          const resource = createAudioResource(stream);
-          const player = createAudioPlayer();
-
-          connection.subscribe(player);
-          player.play(resource);
-
-          const timeoutId = setTimeout(() => {
-            if (player?.state?.status !== AudioPlayerStatus.Idle) {
-                  player.stop(); // Stops playing after the specified duration (in seconds)
-              }
-          }, duration * 1000);
-
-          player.on(AudioPlayerStatus.Idle, () => {
-            if (timeoutId) clearTimeout(timeoutId); // Clear the timeout to prevent double-destroy attempts
-          });
-
-          player.on('error', (error) => {
-              console.error('Player Error: ', error);
-              if (timeoutId) clearTimeout(timeoutId); // Clear the timeout to prevent double-destroy attempts
-          });
-
-          connection.on("error", (error) => {
-              console.error("Error in Voice Connection: ", error);
-              if (timeoutId) clearTimeout(timeoutId); // Clear the timeout to prevent double-destroy attempts
-          });
-
-      } catch (error) {
-          console.error("Error playing theme song:", error);
-          if (timeoutId) clearTimeout(timeoutId); // Clear the timeout to prevent double-destroy attempts
-      }
+  } catch (error) {
+      console.error("Error playing theme song:", error);
   }
+}
+
+function setupPlayerEvents(player, connection, timeoutId) {
+  player.on('error', (error) => {
+      console.error('AudioPlayer error:', error);
+      if (timeoutId) clearTimeout(timeoutId); // Clear the timeout if there's an error
+  });
+
+  player.on(AudioPlayerStatus.Idle, () => {
+      if (timeoutId) clearTimeout(timeoutId); // Clear the timeout when playback is idle
+  });
+
+  connection.on('stateChange', async (oldState, newState) => {
+      console.log(`Connection transitioned from ${oldState.status} to ${newState.status}`);
+      if (newState.status === VoiceConnectionStatus.Disconnected) {
+          try {
+              await entersState(connection, VoiceConnectionStatus.Connecting, 5_000);
+          } catch (error) {
+              console.error('Unable to connect within 5 seconds', error);
+              connection.destroy();
+              if (timeoutId) clearTimeout(timeoutId); // Clear the timeout if the connection is destroyed
+          }
+      }
+  });
+
+  connection.on('error', (error) => {
+      console.error('Voice connection error:', error);
+      if (timeoutId) clearTimeout(timeoutId); // Clear the timeout on connection error
+  });
 }
 
 function retrieveUserIdByUsername(members, username) {
