@@ -487,10 +487,19 @@ client.on("interactionCreate", async (interaction) => {
         // Fetch all members
         const members = await interaction.guild.members.fetch();
         if (username) {
-          userId = retrieveUserIdByUsername(members, username);
-        }
+          if (interaction.guild.ownerId !== interaction.user.id) {
+              // If not server owner, discard the username argument
+              await interaction.reply({
+                  content: "You do not have permission to set theme songs for other users.",
+                  ephemeral: true,
+              });
+              return;
+          } else {
+            console.log("OWNER")
+            userId = retrieveUserIdByUsername(members, username);
+          }
 
-        // console.log("User ID:", userId);
+        }
 
         if (userId) {
           // If userId is already found, use it
