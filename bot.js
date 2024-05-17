@@ -266,6 +266,8 @@ const players = new Map();
 const voiceConnections = new Map();
 
 async function maintainConnection(channel, player) {
+  console.log('count connections', voiceConnections.size)
+  console.log('count players', players.size)
   const guildId = channel.guild.id;
   let connection = voiceConnections.get(guildId);
 
@@ -299,7 +301,7 @@ async function maintainConnection(channel, player) {
 
         setupConnectionEvents(connection, player);
         voiceConnections.set(guildId, connection);
-        // console.log(`Successfully connected to ${channel.name}`);
+        console.log(`Successfully connected to ${channel.name}`);
     }
 }
 
@@ -781,26 +783,23 @@ client.on("interactionCreate", async (interaction) => {
     const [action, title] = interaction.customId.split('-');
 
     if (action === 'play') {
-      if (!soundboardState[userId]) {
-        const initialPage = 0;
-        const { soundboard, currentPage, totalPages } = await getSoundboard(initialPage);
-        soundboardState[userId] = { page: currentPage, totalPages };
-      }
       const state = soundboardState[userId];
 
-      const soundboard = await getSoundboard(state.page);
-      const soundbite = soundboard.soundboard.find(sb => sb.title === title);
-
       if (!state || !state.page) {
+        // Handle the case where state is undefined or state.page is undefined
         console.warn('Soundboard state or page is undefined for user:', userId);
-        // Send a warning message to the user
-        await interaction.reply({
+
+        // You can either initialize the state here, send a warning message, or ignore the action
+        // For example, sending a warning message:
+        interaction.reply({
             content: "Your soundboard state was lost. Please reinitialize the soundboard.",
             ephemeral: true // Only the user can see this message
         });
         return; // Exit the function to prevent further errors
-    }
+      }
 
+      const soundboard = await getSoundboard(state.page);
+      const soundbite = soundboard.soundboard.find(sb => sb.title === title);
 
       if (soundbite) {
         const channel = interaction.member.voice.channel;
