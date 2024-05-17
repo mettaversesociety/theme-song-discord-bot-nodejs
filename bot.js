@@ -661,6 +661,8 @@ client.on("interactionCreate", async (interaction) => {
     soundboardState[userId] = { page: currentPage, totalPages };
   }
 
+  const state = soundboardState[userId];
+
   if (interaction.isCommand()) {
 
     if (interaction.commandName === "approve-role-or-user") {
