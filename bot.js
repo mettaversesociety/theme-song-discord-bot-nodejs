@@ -470,7 +470,8 @@ async function registerCommands() {
         addSoundbiteCommand.toJSON(),
         deleteSoundbiteCommand.toJSON(),
         viewSoundboardCommand.toJSON(),
-        playYoutubeCommand.toJSON()
+        playYoutubeCommand.toJSON(),
+        skipYoutubeCommand.toJSON()
       ],
     });
     console.log("Successfully reloaded application (/) commands.");
