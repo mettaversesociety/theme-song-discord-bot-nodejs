@@ -828,10 +828,8 @@ client.on("interactionCreate", async (interaction) => {
           state.page = currentPage;
           state.totalPages = totalPages;
 
-          await interaction.reply({
-              content: `You're now on page ${state.page + 1}/${state.totalPages}`,
-              ephemeral: true
-          });
+        await sendSoundboard(interaction, soundboard, currentPage, totalPages, true);
+
       } catch (error) {
           console.error('Error fetching soundboard:', error);
           await interaction.reply({
