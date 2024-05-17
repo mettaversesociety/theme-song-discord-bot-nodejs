@@ -942,6 +942,20 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     return; // No change in state
   }
 
+  if (oldState.channelId && !newState.channelId) {
+    console.log(`Bot was manually disconnected from ${oldState.channelId}`);
+    
+    // Destroy all voice connections
+    const connections = getVoiceConnections();
+    for (const connection of connections.values()) {
+        connection.destroy();
+        console.log(`Destroyed connection in guild ${connection.joinConfig.guildId}`);
+    }
+    
+    // Clear any additional resources or listeners if necessary
+    // clearResourcesAndListeners();
+  }
+
   const member = newState.member;
   const themeSongData = await getMemberThemeSong(member.id);
   const newChannel = newState.guild.channels.cache.get(newState.channelId);
