@@ -781,6 +781,11 @@ client.on("interactionCreate", async (interaction) => {
     const [action, title] = interaction.customId.split('-');
 
     if (action === 'play') {
+      if (!soundboardState[userId]) {
+        const initialPage = 0;
+        const { soundboard, currentPage, totalPages } = await getSoundboard(initialPage);
+        soundboardState[userId] = { page: currentPage, totalPages };
+      }
       const state = soundboardState[userId];
 
       const soundboard = await getSoundboard(state.page);
@@ -815,34 +820,22 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
     } else if (action === 'previous' || action === 'next') {
+        if (!soundboardState[userId]) {
+          const initialPage = 0;
+          const { currentPage, totalPages } = await getSoundboard(initialPage);
+          soundboardState[userId] = { page: currentPage, totalPages };
+        }
 
-      const state = soundboardState[userId];
+        const state = soundboardState[userId];
+        if (state) {
+            const page = action === 'previous' ? state.page - 1 : state.page + 1;
+            const { soundboard, currentPage, totalPages } = await getSoundboard(page);
+            state.page = currentPage;
 
-      if (action === 'previous') {
-        state.page = Math.max(0, state.page - 1); // Prevent going below page 0
-      } else if (action === 'next') {
-        state.page = Math.min(state.totalPages - 1, state.page + 1); // Prevent going above totalPages
-      }
-
-      try {
-          const { soundboard, currentPage, totalPages } = await getSoundboard(state.page);
-          state.soundboard = soundboard;
-          state.page = currentPage;
-          state.totalPages = totalPages;
-
-          await interaction.reply({
-              content: `You're now on page ${state.page + 1}/${state.totalPages}`,
-              ephemeral: true
-          });
-      } catch (error) {
-          console.error('Error fetching soundboard:', error);
-          await interaction.reply({
-              content: "An error occurred while fetching the soundboard. Please try again later.",
-              ephemeral: true
-          });
+            await sendSoundboard(interaction, soundboard, currentPage, totalPages, true);
+        }
       }
     }
-  }
 });
 
 async function sendSoundboard(interaction, soundboard, currentPage, totalPages, edit = false) {
