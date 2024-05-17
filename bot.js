@@ -658,6 +658,15 @@ async function getSoundboard(page = 0) {
 client.on("interactionCreate", async (interaction) => {
   let userId = interaction.user.id;
 
+  // Ensure soundboard state is initialized
+  if (!soundboardState[userId]) {
+    const initialPage = 0;
+    const { soundboard, currentPage, totalPages } = await getSoundboard(initialPage);
+    soundboardState[userId] = { page: currentPage, totalPages, soundboard };
+  } 
+
+  const state = soundboardState[userId];
+
   if (interaction.isCommand()) {
 
     if (interaction.commandName === "approve-role-or-user") {
