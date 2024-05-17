@@ -801,7 +801,7 @@ client.on("interactionCreate", async (interaction) => {
         });
       }
   
-      const player = getPlayer(guild.id);
+      const player = getPlayer(channel.guild.id);
       if (player) {
         player.stop();
         return interaction.reply({
