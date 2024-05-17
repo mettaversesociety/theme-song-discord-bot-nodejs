@@ -265,22 +265,64 @@ function retrieveUserIdByUsername(members, username) {
 const connections = new Map();
 const players = new Map();
 
+const voiceConnections = new Map();
+
 async function maintainConnection(channel) {
-    const guildId = channel.guild.id;
-    
-    // Check if a connection already exists
-    let connection = connections.get(guildId);
-    if (!connection) {
+  const key = `${channel.guild.id}`;
+  let connection = voiceConnections.get(key);
+
+  if (connection) {
+    // Check if the bot is connected to a different channel
+    if (connection.joinConfig.channelId !== channel.id) {
+        // Destroy the old connection only if it's not already destroyed
+        if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
+            connection.destroy();
+        }
+
+        // Create and store new connection
         connection = joinVoiceChannel({
             channelId: channel.id,
-            guildId,
+            guildId: channel.guild.id,
             adapterCreator: channel.guild.voiceAdapterCreator,
         });
-        connections.set(guildId, connection);
-    }
-    return connection;
-}
 
+        connection.on('stateChange', (oldState, newState) => {
+            if (newState.status === VoiceConnectionStatus.Disconnected && newState.reason !== VoiceConnectionDisconnectReason.WebSocketClose) {
+                connection.destroy();
+            }
+        });
+
+        connection.on('error', (error) => {
+            console.error('Voice connection error:', error);
+        });
+
+        voiceConnections.set(key, connection);
+        console.log(`Moved connection to new channel: ${channel.name}`);
+    } else {
+        console.log('Bot is already connected to this channel.');
+    }
+  } else {
+      connection = joinVoiceChannel({
+          channelId: channel.id,
+          guildId: channel.guild.id,
+          adapterCreator: channel.guild.voiceAdapterCreator,
+      });
+
+      connection.on('stateChange', (oldState, newState) => {
+          if (newState.status === VoiceConnectionStatus.Disconnected && newState.reason !== VoiceConnectionDisconnectReason.WebSocketClose) {
+              connection.destroy();
+          }
+      });
+
+      connection.on('error', (error) => {
+          console.error('Voice connection error:', error);
+      });
+
+      voiceConnections.set(key, connection);
+  }
+
+  return connection;
+}
 function setupConnectionEvents(connection, player) {
   connection.on('stateChange', async (oldState, newState) => {
       console.log(`Connection transitioned from ${oldState.status} to ${newState.status}`);
