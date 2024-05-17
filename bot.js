@@ -89,7 +89,6 @@ async function loadApprovedUsersCache() {
   }
 }
 
-const voiceConnections = new Map();
 const approvedRolesCache = new Map(); // Store approved roles by guild ID
 const approvedUsersCache = new Map(); // Store approved users by guild ID
 const soundboardState = {}; // In-memory state to track paginated soundboard pages
@@ -216,55 +215,119 @@ async function disapproveRoleOrUser(interaction) {
   }
 }
 
-async function maintainConnection(channel) {
-  let connection = getVoiceConnection(channel.guild.id);
+function retrieveUserIdByUsername(members, username) {
+  let normalizedUsername;
 
-  if (connection) {
-    if (connection.joinConfig.channelId !== channel.id) {
-      if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
-          connection.destroy();
-      }
-      connection = joinVoiceChannel({
-          channelId: channel.id,
-          guildId: channel.guild.id,
-          adapterCreator: channel.guild.voiceAdapterCreator,
-      });
-      setupConnectionEvents(connection);
-      voiceConnections.set(channel.guild.id, connection);
-    } else {
-      console.log('Bot is already connected to this channel.');
+  if (username) {
+    // Check if the username is a mention (starts with <@ and ends with >)
+    if (username.startsWith("<@") && username.endsWith(">")) {
+      const userId = username.slice(2, -1); // Remove the <> and parse the ID
+      return userId;
     }
-  } else {
-    connection = joinVoiceChannel({
-        channelId: channel.id,
-        guildId: channel.guild.id,
-        adapterCreator: channel.guild.voiceAdapterCreator,
-    });
-    setupConnectionEvents(connection);
-    voiceConnections.set(channel.guild.id, connection);
+
+    // Normalize username if it includes a discriminator (e.g., 'username#1234')
+    normalizedUsername = username.split("#")[0];
   }
 
-  return connection;
+  // Ensure the member list is an array, regardless of the input data structure
+  let memberList;
+  if (members instanceof Map) {
+    memberList = Array.from(members.values());
+  } else if (Array.isArray(members)) {
+    memberList = members;
+  } else {
+    memberList = Object.values(members);
+  }
+
+  // Find member by username or nickname (display name)
+    const user = memberList.find((member) => {
+    const actualUsername = member.user && member.user.username;
+    const discriminator = member.user && member.user.discriminator;
+    const memberNickname = member.user && member.user.globalName;
+    const displayName = actualUsername + "#" + discriminator; // Combine username and discriminator
+
+    return (
+      actualUsername === normalizedUsername ||
+      displayName === username ||
+      memberNickname === username
+    );
+  });
+
+  // Check if user was found and return user ID or null
+  if (user) {
+    return user.user.id;
+  } else {
+    console.log(`No user found with the specified username: ${username}`);
+    return null;
+  }
 }
 
-function setupConnectionEvents(connection) {
-  connection.on('stateChange', (oldState, newState) => {
-      if (newState.status === VoiceConnectionStatus.Disconnected && newState.reason !== 'WebSocketClose') {
-          connection.destroy();
+const connections = new Map();
+const players = new Map();
+
+async function maintainConnection(channel) {
+    const guildId = channel.guild.id;
+    
+    // Check if a connection already exists
+    let connection = connections.get(guildId);
+    if (!connection) {
+        connection = joinVoiceChannel({
+            channelId: channel.id,
+            guildId,
+            adapterCreator: channel.guild.voiceAdapterCreator,
+        });
+        connections.set(guildId, connection);
+    }
+    return connection;
+}
+
+function setupConnectionEvents(connection, player) {
+  connection.on('stateChange', async (oldState, newState) => {
+      console.log(`Connection transitioned from ${oldState.status} to ${newState.status}`);
+      if (newState.status === VoiceConnectionStatus.Disconnected) {
+          try {
+              if (newState.reason !== 'WebSocketClose') {
+                  await entersState(connection, VoiceConnectionStatus.Connecting, 5000);
+              }
+          } catch (error) {
+              console.error('Unable to connect within 5 seconds', error);
+              connection.destroy();
+          }
       }
   });
+
   connection.on('error', (error) => {
       console.error('Voice connection error:', error);
   });
+
+  // Subscribe to the player if the connection is not already subscribed or if the subscription is different
+  if (!connection.state.subscription || connection.state.subscription.player !== player) {
+      connection.subscribe(player);
+  }
 }
 
-function disconnectFromChannel(guildId, channelId) {
-  const key = `${guildId}-${channelId}`;
-  const connection = voiceConnections.get(key);
-  if (connection) {
-      connection.destroy();
-      voiceConnections.delete(key);
+function setupPlayerEvents(player, resource, stream, timeoutId) {
+  player.on('error', (error) => {
+      console.error('AudioPlayer error:', error);
+      if (timeoutId) clearTimeout(timeoutId); // Clear the timeout if there's an error
+      if (stream) stream.destroy(); // Ensure stream is destroyed on error
+  });
+
+  player.on(AudioPlayerStatus.Idle, () => {
+      if (timeoutId) clearTimeout(timeoutId); // Clear the timeout when playback is idle
+      if (stream) stream.destroy(); // Ensure stream is destroyed when playback is idle
+      if (resource) resource.playStream.destroy(); // Clean up resource if necessary
+  });
+}
+
+function getPlayer(guildId) {
+  // Check if a player already exists
+  let player = players.get(guildId);
+  if (!player) {
+      player = createAudioPlayer();
+      players.set(guildId, player);
   }
+  return player;
 }
 
 const approveRoleOrUserCommand = new SlashCommandBuilder()
@@ -413,13 +476,12 @@ async function playSoundBite(interaction, channel, url) {
       // const trackInfo = await scdl.getInfo(url);
       const stream = await scdl.download(url);
       const resource = createAudioResource(stream);
-      const player = createAudioPlayer();
+      const player = getPlayer(channel.guild.id);
 
       player.play(resource);
 
-      connection.subscribe(player);
-      
-      setupPlayerEvents(player, connection)
+      setupConnectionEvents(connection, player); // Pass player to setupConnectionEvents
+      setupPlayerEvents(player, resource, stream);
     } catch (error) {
       console.error("Error playing soundbite:", error);
     }
@@ -433,16 +495,15 @@ async function playSoundBite(interaction, channel, url) {
 async function playYoutube(channel, url) {
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
     try {
-      const connection = await maintainConnection(channel);  
-      console.log(`Attempting to play YouTube URL: ${url}`);
+      const connection = await maintainConnection(channel);
+      const player = getPlayer(channel.guild.id);
       const stream = ytdl(url, { quality: "highestaudio" });
       const resource = createAudioResource(stream);
-      const player = createAudioPlayer();
 
-      connection.subscribe(player);
       player.play(resource);
 
-      setupPlayerEvents(player, connection)
+      setupConnectionEvents(connection, player); // Pass player to setupConnectionEvents
+      setupPlayerEvents(player, resource, stream);
     } catch (error) {
         console.error("Error playing YouTube component:", error);
     }
@@ -451,10 +512,13 @@ async function playYoutube(channel, url) {
   }
 }
 
-async function playThemeSong(channel, url, duration, username) {
+async function playThemeSong(channel, url, duration) {
   try {
     const connection = await maintainConnection(channel);
-    let stream, resource;
+    const player = getPlayer(channel.guild.id);
+    const resource = createAudioResource(stream);
+
+    let stream;
 
     if (url.includes("soundcloud.com")) {
         stream = await scdl.download(url);
@@ -465,9 +529,6 @@ async function playThemeSong(channel, url, duration, username) {
         return;
     }
 
-    resource = createAudioResource(stream);
-    const player = createAudioPlayer();
-    connection.subscribe(player);
     player.play(resource);
 
     const timeoutId = setTimeout(() => {
@@ -475,90 +536,12 @@ async function playThemeSong(channel, url, duration, username) {
             player.stop();
         }
     }, duration * 1000);
-
-    player.on(AudioPlayerStatus.Idle, () => {
-        clearTimeout(timeoutId);
-    });
-    setupPlayerEvents(player, connection, timeoutId);
+    
+    setupConnectionEvents(connection, player); // Pass player to setupConnectionEvents
+    setupPlayerEvents(player, resource, stream, timeoutId);
 
   } catch (error) {
       console.error("Error playing theme song:", error);
-  }
-}
-
-function setupPlayerEvents(player, connection, timeoutId) {
-  player.on('error', (error) => {
-      console.error('AudioPlayer error:', error);
-      if (timeoutId) clearTimeout(timeoutId); // Clear the timeout if there's an error
-  });
-
-  player.on(AudioPlayerStatus.Idle, () => {
-      if (timeoutId) clearTimeout(timeoutId); // Clear the timeout when playback is idle
-  });
-
-  connection.on('stateChange', async (oldState, newState) => {
-      console.log(`Connection transitioned from ${oldState.status} to ${newState.status}`);
-      if (newState.status === VoiceConnectionStatus.Disconnected) {
-          try {
-              await entersState(connection, VoiceConnectionStatus.Connecting, 5_000);
-          } catch (error) {
-              console.error('Unable to connect within 5 seconds', error);
-              connection.destroy();
-              if (timeoutId) clearTimeout(timeoutId); // Clear the timeout if the connection is destroyed
-          }
-      }
-  });
-
-  connection.on('error', (error) => {
-      console.error('Voice connection error:', error);
-      if (timeoutId) clearTimeout(timeoutId); // Clear the timeout on connection error
-  });
-}
-
-function retrieveUserIdByUsername(members, username) {
-  let normalizedUsername;
-
-  if (username) {
-    // Check if the username is a mention (starts with <@ and ends with >)
-    if (username.startsWith("<@") && username.endsWith(">")) {
-      const userId = username.slice(2, -1); // Remove the <> and parse the ID
-      return userId;
-    }
-
-    // Normalize username if it includes a discriminator (e.g., 'username#1234')
-    normalizedUsername = username.split("#")[0];
-  }
-
-  // Ensure the member list is an array, regardless of the input data structure
-  let memberList;
-  if (members instanceof Map) {
-    memberList = Array.from(members.values());
-  } else if (Array.isArray(members)) {
-    memberList = members;
-  } else {
-    memberList = Object.values(members);
-  }
-
-  // Find member by username or nickname (display name)
-    const user = memberList.find((member) => {
-    const actualUsername = member.user && member.user.username;
-    const discriminator = member.user && member.user.discriminator;
-    const memberNickname = member.user && member.user.globalName;
-    const displayName = actualUsername + "#" + discriminator; // Combine username and discriminator
-
-    return (
-      actualUsername === normalizedUsername ||
-      displayName === username ||
-      memberNickname === username
-    );
-  });
-
-  // Check if user was found and return user ID or null
-  if (user) {
-    return user.user.id;
-  } else {
-    console.log(`No user found with the specified username: ${username}`);
-    return null;
   }
 }
 
@@ -614,7 +597,7 @@ async function deleteSoundbite(title) {
   }
 }
 
-const itemsPerPage = 25; // Number of items per page
+const itemsPerPage = 20; // Number of items per page
 
 async function getSoundboard(page = 0) {
   try {
@@ -776,7 +759,7 @@ client.on("interactionCreate", async (interaction) => {
         ephemeral: true,
       });
 
-      // await sendSoundboard(interaction, soundboard, currentPage, totalPages);
+      await sendSoundboard(interaction, soundboard, currentPage, totalPages);
 
     } else if (interaction.commandName === "yt") {
       const url = interaction.options.getString("url");
