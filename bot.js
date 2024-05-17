@@ -783,20 +783,12 @@ client.on("interactionCreate", async (interaction) => {
     const [action, title] = interaction.customId.split('-');
 
     if (action === 'play') {
-      const state = soundboardState[userId];
-
-      if (!state || !state.page) {
-        // Handle the case where state is undefined or state.page is undefined
-        console.warn('Soundboard state or page is undefined for user:', userId);
-
-        // You can either initialize the state here, send a warning message, or ignore the action
-        // For example, sending a warning message:
-        interaction.reply({
-            content: "Your soundboard state was lost. Please reinitialize the soundboard.",
-            ephemeral: true // Only the user can see this message
-        });
-        return; // Exit the function to prevent further errors
+      if (!soundboardState[userId]) {
+        const initialPage = 0;
+        const { soundboard, currentPage, totalPages } = await getSoundboard(initialPage);
+        soundboardState[userId] = { page: currentPage, totalPages };
       }
+      const state = soundboardState[userId];
 
       const soundboard = await getSoundboard(state.page);
       const soundbite = soundboard.soundboard.find(sb => sb.title === title);
