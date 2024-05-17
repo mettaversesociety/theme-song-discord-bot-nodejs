@@ -301,7 +301,7 @@ async function maintainConnection(channel, player) {
 
         setupConnectionEvents(connection, player);
         voiceConnections.set(guildId, connection);
-        console.log(`Successfully connected to ${channel.name}`);
+        // console.log(`Successfully connected to ${channel.name}`);
     }
 }
 
