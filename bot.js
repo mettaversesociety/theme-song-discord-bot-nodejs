@@ -837,7 +837,7 @@ client.on("interactionCreate", async (interaction) => {
       } else  {
         console.warn('Soundbite not found for title:', title);
         interaction.reply({
-            content: "The soundbite you are trying to play was not found.",
+            content: "You tried to use an old Soundboard instance. Generate a new soundboard instead.",
             ephemeral: true
         });
         return;
@@ -940,20 +940,6 @@ async function sendSoundboard(interaction, soundboard, currentPage, totalPages, 
 client.on('voiceStateUpdate', async (oldState, newState) => {
   if (oldState.channelId === newState.channelId) {
     return; // No change in state
-  }
-
-  if (oldState.channelId && !newState.channelId) {
-    console.log(`Bot was manually disconnected from ${oldState.channelId}`);
-    
-    // Destroy all voice connections
-    const connections = getVoiceConnections();
-    for (const connection of connections.values()) {
-        connection.destroy();
-        console.log(`Destroyed connection in guild ${connection.joinConfig.guildId}`);
-    }
-    
-    // Clear any additional resources or listeners if necessary
-    // clearResourcesAndListeners();
   }
 
   const member = newState.member;
