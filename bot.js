@@ -865,7 +865,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   if (newChannel && themeSongData) {
       const { url, duration, username } = themeSongData;
       try {
-          // const connection = await maintainConnection(newChannel);
+          const connection = await maintainConnection(newChannel);
           console.log(`Successfully connected to ${newChannel.name}`);
           playThemeSong(newChannel, url, duration, username);
       } catch (error) {
