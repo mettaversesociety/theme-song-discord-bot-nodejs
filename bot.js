@@ -344,6 +344,7 @@ function setupPlayerEvents(player, resource, stream, timeoutId) {
   });
 
   player.on(AudioPlayerStatus.Idle, () => {
+      console.log('AudioPlayer is idle. Cleaning up resources.');
       // Cleanup resources
       if (timeoutId) clearTimeout(timeoutId); // Clear the timeout when playback is idle
       if (stream) stream.destroy(); // Ensure stream is destroyed when playback is idle
@@ -784,20 +785,6 @@ client.on("interactionCreate", async (interaction) => {
 
     if (action === 'play') {
       const state = soundboardState[userId];
-
-      if (!state || !state.page) {
-        // Handle the case where state is undefined or state.page is undefined
-        console.warn('Soundboard state or page is undefined for user:', userId);
-
-        // You can either initialize the state here, send a warning message, or ignore the action
-        // For example, sending a warning message:
-        interaction.reply({
-            content: "Your soundboard state was lost. Please reinitialize the soundboard.",
-            ephemeral: true // Only the user can see this message
-        });
-        return; // Exit the function to prevent further errors
-      }
-
       const soundboard = await getSoundboard(state.page);
       const soundbite = soundboard.soundboard.find(sb => sb.title === title);
 
