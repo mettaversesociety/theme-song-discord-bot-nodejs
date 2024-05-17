@@ -787,6 +787,28 @@ client.on("interactionCreate", async (interaction) => {
             ephemeral: true
         });
       }
+    } else if (interaction.commandName === "skip") {
+      const channel = interaction.member.voice.channel;
+      if (!channel) {
+        return interaction.reply({
+          content: "You need to be in a voice channel to skip playback.",
+          ephemeral: true,
+        });
+      }
+  
+      const player = getPlayer(guild.id);
+      if (player) {
+        player.stop();
+        return interaction.reply({
+          content: "Playback skipped.",
+          ephemeral: true,
+        });
+      } else {
+        return interaction.reply({
+          content: "There's no active playback to skip.",
+          ephemeral: true,
+        });
+      }
     }
   } else if (interaction.isButton()) {
     const userId = interaction.user.id;
