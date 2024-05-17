@@ -516,7 +516,6 @@ async function playThemeSong(channel, url, duration) {
   try {
     const connection = await maintainConnection(channel);
     const player = getPlayer(channel.guild.id);
-    const resource = createAudioResource(stream);
 
     let stream;
 
@@ -528,6 +527,8 @@ async function playThemeSong(channel, url, duration) {
         console.log("Invalid URL provided.");
         return;
     }
+
+    const resource = createAudioResource(stream);
 
     player.play(resource);
 
