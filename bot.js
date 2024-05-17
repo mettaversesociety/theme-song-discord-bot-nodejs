@@ -791,6 +791,16 @@ client.on("interactionCreate", async (interaction) => {
       const soundboard = await getSoundboard(state.page);
       const soundbite = soundboard.soundboard.find(sb => sb.title === title);
 
+      if (!state || !state.page) {
+        console.warn('Soundboard state or page is undefined for user:', userId);
+        // Send a warning message to the user
+        await interaction.reply({
+            content: "Your soundboard state was lost. Please reinitialize the soundboard.",
+            ephemeral: true // Only the user can see this message
+        });
+        return; // Exit the function to prevent further errors
+      }
+
       if (soundbite) {
         const channel = interaction.member.voice.channel;
         if (channel) {
