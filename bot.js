@@ -799,7 +799,8 @@ client.on("interactionCreate", async (interaction) => {
             ephemeral: true // Only the user can see this message
         });
         return; // Exit the function to prevent further errors
-      }
+    }
+
 
       if (soundbite) {
         const channel = interaction.member.voice.channel;
@@ -820,12 +821,6 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
     } else if (action === 'previous' || action === 'next') {
-        if (!soundboardState[userId]) {
-          const initialPage = 0;
-          const { currentPage, totalPages } = await getSoundboard(initialPage);
-          soundboardState[userId] = { page: currentPage, totalPages };
-        }
-
         const state = soundboardState[userId];
         if (state) {
             const page = action === 'previous' ? state.page - 1 : state.page + 1;
