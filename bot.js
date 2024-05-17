@@ -661,8 +661,6 @@ client.on("interactionCreate", async (interaction) => {
     soundboardState[userId] = { page: currentPage, totalPages };
   }
 
-  const state = soundboardState[userId];
-
   if (interaction.isCommand()) {
 
     if (interaction.commandName === "approve-role-or-user") {
@@ -823,10 +821,13 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
     } else if (action === 'previous' || action === 'next') {
+
+      const state = soundboardState[userId];
+
       if (action === 'previous') {
         state.page = Math.max(0, state.page - 1); // Prevent going below page 0
       } else if (action === 'next') {
-          state.page = Math.min(state.totalPages - 1, state.page + 1); // Prevent going above totalPages
+        state.page = Math.min(state.totalPages - 1, state.page + 1); // Prevent going above totalPages
       }
 
       try {
