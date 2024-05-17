@@ -266,8 +266,8 @@ const players = new Map();
 const voiceConnections = new Map();
 
 async function maintainConnection(channel, player) {
-  console.log('count connections', voiceConnections.size)
-  console.log('count players', players.size)
+  // console.log('count connections', voiceConnections.size)
+  // console.log('count players', players.size)
   const guildId = channel.guild.id;
   let connection = voiceConnections.get(guildId);
 
@@ -344,7 +344,7 @@ function setupPlayerEvents(player, resource, stream, timeoutId) {
   });
 
   player.on(AudioPlayerStatus.Idle, () => {
-      console.log('AudioPlayer is idle. Cleaning up resources.');
+      // console.log('AudioPlayer is idle. Cleaning up resources.');
       // Cleanup resources
       if (timeoutId) clearTimeout(timeoutId); // Clear the timeout when playback is idle
       if (stream) stream.destroy(); // Ensure stream is destroyed when playback is idle
