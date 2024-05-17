@@ -262,70 +262,48 @@ function retrieveUserIdByUsername(members, username) {
   }
 }
 
-const connections = new Map();
 const players = new Map();
-
 const voiceConnections = new Map();
 
-async function maintainConnection(channel) {
-  const key = `${channel.guild.id}`;
-  let connection = voiceConnections.get(key);
+async function maintainConnection(channel, player) {
+  const guildId = channel.guild.id;
+  let connection = voiceConnections.get(guildId);
 
   if (connection) {
-    // Check if the bot is connected to a different channel
-    if (connection.joinConfig.channelId !== channel.id) {
-        // Destroy the old connection only if it's not already destroyed
-        if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
-            connection.destroy();
-        }
+      if (connection.joinConfig.channelId !== channel.id) {
+          if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
+              connection.destroy();
+          }
 
-        // Create and store new connection
+          connection = joinVoiceChannel({
+              channelId: channel.id,
+              guildId,
+              adapterCreator: channel.guild.voiceAdapterCreator,
+          });
+
+          setupConnectionEvents(connection, player);
+          voiceConnections.set(guildId, connection);
+          console.log(`Moved connection to new channel: ${channel.name}`);
+      } else {
+          console.log('Bot is already connected to this channel.');
+      }
+    } else {
         connection = joinVoiceChannel({
             channelId: channel.id,
-            guildId: channel.guild.id,
+            guildId,
             adapterCreator: channel.guild.voiceAdapterCreator,
         });
 
-        connection.on('stateChange', (oldState, newState) => {
-            if (newState.status === VoiceConnectionStatus.Disconnected && newState.reason !== VoiceConnectionDisconnectReason.WebSocketClose) {
-                connection.destroy();
-            }
-        });
-
-        connection.on('error', (error) => {
-            console.error('Voice connection error:', error);
-        });
-
-        voiceConnections.set(key, connection);
-        console.log(`Moved connection to new channel: ${channel.name}`);
-    } else {
-        console.log('Bot is already connected to this channel.');
+        setupConnectionEvents(connection, player);
+        voiceConnections.set(guildId, connection);
     }
-  } else {
-      connection = joinVoiceChannel({
-          channelId: channel.id,
-          guildId: channel.guild.id,
-          adapterCreator: channel.guild.voiceAdapterCreator,
-      });
-
-      connection.on('stateChange', (oldState, newState) => {
-          if (newState.status === VoiceConnectionStatus.Disconnected && newState.reason !== VoiceConnectionDisconnectReason.WebSocketClose) {
-              connection.destroy();
-          }
-      });
-
-      connection.on('error', (error) => {
-          console.error('Voice connection error:', error);
-      });
-
-      voiceConnections.set(key, connection);
-  }
-
-  return connection;
+;
 }
+
 function setupConnectionEvents(connection, player) {
   connection.on('stateChange', async (oldState, newState) => {
       console.log(`Connection transitioned from ${oldState.status} to ${newState.status}`);
+      
       if (newState.status === VoiceConnectionStatus.Disconnected) {
           try {
               if (newState.reason !== 'WebSocketClose') {
@@ -514,15 +492,12 @@ async function playSoundBite(interaction, channel, url) {
   if (url.includes("soundcloud.com")) {
     try {
       await interaction.deferUpdate();
-      const connection = await maintainConnection(channel);
+      const player = getPlayer(channel.guild.id);
+      await maintainConnection(channel, player);
       // const trackInfo = await scdl.getInfo(url);
       const stream = await scdl.download(url);
       const resource = createAudioResource(stream);
-      const player = getPlayer(channel.guild.id);
-
       player.play(resource);
-
-      setupConnectionEvents(connection, player); // Pass player to setupConnectionEvents
       setupPlayerEvents(player, resource, stream);
     } catch (error) {
       console.error("Error playing soundbite:", error);
@@ -537,14 +512,11 @@ async function playSoundBite(interaction, channel, url) {
 async function playYoutube(channel, url) {
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
     try {
-      const connection = await maintainConnection(channel);
       const player = getPlayer(channel.guild.id);
+      await maintainConnection(channel, player);
       const stream = ytdl(url, { quality: "highestaudio" });
       const resource = createAudioResource(stream);
-
       player.play(resource);
-
-      setupConnectionEvents(connection, player); // Pass player to setupConnectionEvents
       setupPlayerEvents(player, resource, stream);
     } catch (error) {
         console.error("Error playing YouTube component:", error);
@@ -556,8 +528,8 @@ async function playYoutube(channel, url) {
 
 async function playThemeSong(channel, url, duration) {
   try {
-    const connection = await maintainConnection(channel);
     const player = getPlayer(channel.guild.id);
+    await maintainConnection(channel, player);
 
     let stream;
 
@@ -580,7 +552,6 @@ async function playThemeSong(channel, url, duration) {
         }
     }, duration * 1000);
     
-    setupConnectionEvents(connection, player); // Pass player to setupConnectionEvents
     setupPlayerEvents(player, resource, stream, timeoutId);
 
   } catch (error) {
@@ -907,7 +878,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   if (newChannel && themeSongData) {
       const { url, duration, username } = themeSongData;
       try {
-          const connection = await maintainConnection(newChannel);
           console.log(`Successfully connected to ${newChannel.name}`);
           playThemeSong(newChannel, url, duration, username);
       } catch (error) {
