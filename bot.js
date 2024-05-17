@@ -266,7 +266,7 @@ const players = new Map();
 const voiceConnections = new Map();
 
 async function maintainConnection(channel, player) {
-  console.log('count', voiceConnections.length)
+  console.log('count', voiceConnections.size)
   const guildId = channel.guild.id;
   let connection = voiceConnections.get(guildId);
 
