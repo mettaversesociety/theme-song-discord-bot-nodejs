@@ -271,8 +271,11 @@ async function maintainConnection(channel, player) {
 
   if (connection) {
       if (connection.joinConfig.channelId !== channel.id) {
+          console.log(`Bot needs to move from channelId=${connection.joinConfig.channelId} to channelId=${channel.id}`);
+
           if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
-              connection.destroy();
+            console.log(`Destroying previous connection in channelId=${connection.joinConfig.channelId}`);
+            connection.destroy();
           }
 
           connection = joinVoiceChannel({
@@ -296,8 +299,8 @@ async function maintainConnection(channel, player) {
 
         setupConnectionEvents(connection, player);
         voiceConnections.set(guildId, connection);
+        console.log(`Successfully connected to ${channel.name}`);
     }
-;
 }
 
 function setupConnectionEvents(connection, player) {
@@ -307,7 +310,8 @@ function setupConnectionEvents(connection, player) {
       if (newState.status === VoiceConnectionStatus.Disconnected) {
           try {
               if (newState.reason !== 'WebSocketClose') {
-                  await entersState(connection, VoiceConnectionStatus.Connecting, 5000);
+                console.log('Attempting to reconnect...');
+                await entersState(connection, VoiceConnectionStatus.Connecting, 5000);
               }
           } catch (error) {
               console.error('Unable to connect within 5 seconds', error);
