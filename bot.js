@@ -302,7 +302,7 @@ async function maintainConnection(channel, player) {
 
 function setupConnectionEvents(connection, player) {
   connection.on('stateChange', async (oldState, newState) => {
-      console.log(`Connection transitioned from ${oldState.status} to ${newState.status} : ${connection}`);
+      console.log(`Connection transitioned from ${oldState.status} to ${newState.status} : channelId=${connection.joinConfig.channelId}, guildId=${connection.joinConfig.guildId}`);
       
       if (newState.status === VoiceConnectionStatus.Disconnected) {
           try {
