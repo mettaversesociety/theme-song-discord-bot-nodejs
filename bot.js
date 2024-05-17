@@ -820,6 +820,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
     } else if (action === 'previous' || action === 'next') {
+        if (!soundboardState[userId]) {
+          const initialPage = 0;
+          const { currentPage, totalPages } = await getSoundboard(initialPage);
+          soundboardState[userId] = { page: currentPage, totalPages };
+        }
+
         const state = soundboardState[userId];
         if (state) {
             const page = action === 'previous' ? state.page - 1 : state.page + 1;
