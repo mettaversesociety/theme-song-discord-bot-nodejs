@@ -798,6 +798,13 @@ client.on("interactionCreate", async (interaction) => {
             ephemeral: true,
           });
         }
+      } else  {
+        console.warn('Soundbite not found for title:', title);
+        interaction.reply({
+            content: "The soundbite you are trying to play was not found.",
+            ephemeral: true
+        });
+        return;
       }
     } else if (action === 'previous' || action === 'next') {
         const state = soundboardState[userId];
