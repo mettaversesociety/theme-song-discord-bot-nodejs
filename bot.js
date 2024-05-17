@@ -628,8 +628,9 @@ async function getSoundboard(page = 0) {
 }
 
 client.on("interactionCreate", async (interaction) => {
+  let userId = interaction.user.id;
+
   if (interaction.isCommand()) {
-    let userId = interaction.user.id;
 
     if (interaction.commandName === "approve-role-or-user") {
       await approveRoleOrUser(interaction);
@@ -728,39 +729,10 @@ client.on("interactionCreate", async (interaction) => {
       const initialPage = 0;
       const { soundboard, currentPage, totalPages } = await getSoundboard(initialPage);
 
-      if (soundboard.length === 0) {
-        await interaction.reply({
-          content: "Your soundboard is empty.",
-          ephemeral: true
-        });
-        return;
-      }
-
       // Store state for the user
       soundboardState[userId] = { page: currentPage, totalPages };
 
-      // Create message with buttons for each soundbite
-      const components = [];
-      for (let i = 0; i < soundboard.length; i += 5) {
-        const row = new ActionRowBuilder();
-        const slice = soundboard.slice(i, i + 5);
-        slice.forEach(soundbite => {
-          const playButton = new ButtonBuilder()
-            .setCustomId(`play-${soundbite.title}`)
-            .setLabel(`${soundbite.title}`)
-            .setStyle(ButtonStyle.Primary);
-          row.addComponents(playButton);
-        });
-        components.push(row);
-      }
-
-      await interaction.reply({
-        content: "Your Soundboard:",
-        components,
-        ephemeral: true,
-      });
-
-      await sendSoundboard(interaction, soundboard, currentPage, totalPages);
+      await sendSoundboard(interaction, soundboard, currentPage, totalPages, false);
 
     } else if (interaction.commandName === "yt") {
       const url = interaction.options.getString("url");
@@ -815,6 +787,18 @@ client.on("interactionCreate", async (interaction) => {
 async function sendSoundboard(interaction, soundboard, currentPage, totalPages, edit = false) {
   const components = [];
 
+  if (soundboard.length === 0) {
+    try {
+      await interaction.reply({
+          content: "Your soundboard is empty.",
+          ephemeral: true,
+      });
+    } catch (error) {
+        console.error("Error sending empty soundboard message:", error);
+    }
+    return;
+  }
+
   // Create soundboard buttons (5x5 grid)
   for (let i = 0; i < soundboard.length; i += 5) {
       const row = new ActionRowBuilder();
@@ -838,7 +822,6 @@ async function sendSoundboard(interaction, soundboard, currentPage, totalPages, 
       .setLabel('Previous')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(currentPage === 0);
-  paginationRow.addComponents(prevButton);
 
   // Next Page Button
   const nextButton = new ButtonBuilder()
@@ -846,51 +829,29 @@ async function sendSoundboard(interaction, soundboard, currentPage, totalPages, 
       .setLabel('Next')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(currentPage === totalPages - 1);
-  paginationRow.addComponents(nextButton);
-
+  
+  paginationRow.addComponents(prevButton, nextButton);
   components.push(paginationRow);
 
-  // Send initial message or update existing message
-  if (edit) {
-      await interaction.update({
-          content: `Your Soundboard (Page ${currentPage + 1} of ${totalPages}):`,
-          components: components,
-      });
-  } else {
-      await interaction.reply({
-          content: `Your Soundboard (Page ${currentPage + 1} of ${totalPages}):`,
-          components: components,
-          ephemeral: true,
-      });
+  try {
+    // Send initial message or update existing message
+    if (edit) {
+        await interaction.update({
+            content: `Your Soundboard (Page ${currentPage + 1} of ${totalPages}):`,
+            components: components,
+            ephemeral: true,
+        });
+    } else {
+        await interaction.reply({
+            content: `Your Soundboard (Page ${currentPage + 1} of ${totalPages}):`,
+            components: components,
+            ephemeral: true,
+        });
+    }
+  } catch (error) {
+    console.error("Error sending soundboard:", error);
   }
 }
-
-// client.on('messageCreate', async (message) => {
-//   if (message.partial) {
-//       // If the message is a partial, you may want to fetch the complete message:
-//       try {
-//           await message.fetch();
-//           console.log('Message fetched and is now complete: ', message.content);
-//       } catch (error) {
-//           console.error('Something went wrong while fetching the message: ', error);
-//       }
-//   } else {
-//       console.log('Received a message: ', message.content);
-//   }
-// });
-
-// client.on('messageDelete', async (message) => {
-//   if (message.partial) {
-//       try {
-//           const fullMessage = await message.fetch();
-//           console.log(`Message was deleted: ${fullMessage.content}`);
-//       } catch (error) {
-//           console.error('Error fetching the full message: ', error);
-//       }
-//   } else {
-//       console.log(`Message was deleted: ${message.content}`);
-//   }
-// });
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
   if (oldState.channelId === newState.channelId) {
