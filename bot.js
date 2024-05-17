@@ -950,7 +950,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       const { url, duration, username } = themeSongData;
       try {
           // console.log(`Successfully connected to ${newChannel.name}`);
-          playThemeSong(newChannel, url, duration, username);
+          playThemeSong(newChannel, url, duration);
       } catch (error) {
           console.error('Error attempting to rejoin or play theme song:', error);
       }
