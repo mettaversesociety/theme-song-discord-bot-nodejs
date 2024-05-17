@@ -273,10 +273,10 @@ async function maintainConnection(channel, player) {
 
   if (connection) {
       if (connection.joinConfig.channelId !== channel.id) {
-          console.log(`Bot needs to move from channelId=${connection.joinConfig.channelId} to channelId=${channel.id}`);
+          // console.log(`Bot needs to move from channelId=${connection.joinConfig.channelId} to channelId=${channel.id}`);
 
           if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
-            console.log(`Destroying previous connection in channelId=${connection.joinConfig.channelId}`);
+            // console.log(`Destroying previous connection in channelId=${connection.joinConfig.channelId}`);
             connection.destroy();
           }
 
@@ -288,9 +288,9 @@ async function maintainConnection(channel, player) {
 
           setupConnectionEvents(connection, player);
           voiceConnections.set(guildId, connection);
-          console.log(`Moved connection to new channel: ${channel.name}`);
+          // console.log(`Moved connection to new channel: ${channel.name}`);
       } else {
-          console.log('Bot is already connected to this channel.');
+          // console.log('Bot is already connected to this channel.');
       }
     } else {
         connection = joinVoiceChannel({
@@ -307,7 +307,7 @@ async function maintainConnection(channel, player) {
 
 function setupConnectionEvents(connection, player) {
   connection.on('stateChange', async (oldState, newState) => {
-      console.log(`Connection transitioned from ${oldState.status} to ${newState.status} : channelId=${connection.joinConfig.channelId}, guildId=${connection.joinConfig.guildId}`);
+      // console.log(`Connection transitioned from ${oldState.status} to ${newState.status} : channelId=${connection.joinConfig.channelId}, guildId=${connection.joinConfig.guildId}`);
       
       if (newState.status === VoiceConnectionStatus.Disconnected) {
           try {
@@ -333,20 +333,9 @@ function setupConnectionEvents(connection, player) {
 }
 
 function setupPlayerEvents(player, resource, stream, timeoutId) {
-    // Check if listeners are already added to avoid adding them multiple times 
-    if (player.listenerCount('stateChange') === 0) {
-        player.on('stateChange', (oldState, newState) => {
-            // Handle the state change
-            console.log(`AudioPlayer stateChange from ${oldState.status} to ${newState.status}`);
-        });
-    }
-    
-    if (player.listenerCount('error') === 0) {
-        player.on('error', error => {
-            console.error(`Error in player: ${error.message}`, error);
-            // Cleanup resource or other necessary tasks
-        });
-    }
+  // Remove all existing listeners to prevent leaks
+  player.removeAllListeners('error');
+  player.removeAllListeners(AudioPlayerStatus.Idle);
 
   player.on('error', (error) => {
       console.error('AudioPlayer error:', error);
@@ -355,9 +344,14 @@ function setupPlayerEvents(player, resource, stream, timeoutId) {
   });
 
   player.on(AudioPlayerStatus.Idle, () => {
+      console.log('AudioPlayer is idle. Cleaning up resources.');
+      // Cleanup resources
       if (timeoutId) clearTimeout(timeoutId); // Clear the timeout when playback is idle
       if (stream) stream.destroy(); // Ensure stream is destroyed when playback is idle
       if (resource) resource.playStream.destroy(); // Clean up resource if necessary
+      
+      // Remove all listeners to avoid memory leaks
+      player.removeAllListeners();
   });
 }
 
