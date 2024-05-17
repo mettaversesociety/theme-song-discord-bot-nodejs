@@ -333,6 +333,21 @@ function setupConnectionEvents(connection, player) {
 }
 
 function setupPlayerEvents(player, resource, stream, timeoutId) {
+    // Check if listeners are already added to avoid adding them multiple times 
+    if (player.listenerCount('stateChange') === 0) {
+        player.on('stateChange', (oldState, newState) => {
+            // Handle the state change
+            console.log(`AudioPlayer stateChange from ${oldState.status} to ${newState.status}`);
+        });
+    }
+    
+    if (player.listenerCount('error') === 0) {
+        player.on('error', error => {
+            console.error(`Error in player: ${error.message}`, error);
+            // Cleanup resource or other necessary tasks
+        });
+    }
+
   player.on('error', (error) => {
       console.error('AudioPlayer error:', error);
       if (timeoutId) clearTimeout(timeoutId); // Clear the timeout if there's an error
