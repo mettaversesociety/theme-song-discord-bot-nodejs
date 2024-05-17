@@ -455,6 +455,10 @@ const playYoutubeCommand = new SlashCommandBuilder()
       .setRequired(true),
   );
 
+const skipYoutubeCommand = new SlashCommandBuilder()
+  .setName("skip")
+  .setDescription("Skip Youtube playback");
+
 async function registerCommands() {
   try {
     const rest = new REST({ version: "9" }).setToken(process.env.DISCORD_TOKEN);
