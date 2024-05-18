@@ -8,6 +8,8 @@ git reset --hard
 # Pull the latest changes from Git
 git pull
 
+npm install
+
 # Restart the systemd service
 sudo systemctl restart discord-bot
 
