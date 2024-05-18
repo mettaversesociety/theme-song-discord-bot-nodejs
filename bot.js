@@ -16,8 +16,8 @@ const {
 const ytdl = require("ytdl-core");
 const MongoClient = require("mongodb").MongoClient;
 const ffmpeg = require("ffmpeg-static");
-
 process.env.FFMPEG_BINARY = ffmpeg;
+
 const scdl = require('soundcloud-downloader').default;
 
 const client = new Client({
@@ -38,19 +38,37 @@ const mongoClient = new MongoClient(process.env.MONGODB_URI, {
   useUnifiedTopology: true,
 });
 
+let rolesCollection;
+let usersCollection;
+let volumeCollection;
+let defaultVolumeLevel = 0.4; // Default to 40% if none is found in the database
+
 async function connectToMongoDB() {
   try {
-    await mongoClient.connect();
-    console.log("Connected to MongoDB");
+      await mongoClient.connect();
+      console.log("Connected to MongoDB");
+
+      const db = mongoClient.db("theme_songsDB");
+
+      // Initialize collections
+      rolesCollection = db.collection("approvedRoles");
+      usersCollection = db.collection("approvedUsers");
+      volumeCollection = db.collection("volumeSettings");
+
+      // Fetch the existing default volume from the collection
+      const volumeDoc = await volumeCollection.findOne({ _id: "defaultVolume" });
+      if (volumeDoc && volumeDoc.value !== undefined) {
+          defaultVolumeLevel = volumeDoc.value;
+      } else {
+          // Initialize the volume in the database if not present
+          await volumeCollection.insertOne({ _id: "defaultVolume", value: defaultVolumeLevel });
+      }
   } catch (error) {
-    console.error("Error connecting to MongoDB", error);
+      console.error("Error connecting to MongoDB or fetching default volume:", error);
   }
 }
 
 connectToMongoDB();
-
-const rolesCollection = mongoClient.db("theme_songsDB").collection("approvedRoles");
-const usersCollection = mongoClient.db("theme_songsDB").collection("approvedUsers");
 
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}!`);
@@ -332,7 +350,19 @@ function setupConnectionEvents(connection, player) {
   }
 }
 
-function setupPlayerEvents(player, resource, stream, timeoutId) {
+async function setupPlayerEvents(player, stream, timeoutId) {
+  let resource;
+
+  try {
+    // Fetch volume settings for all users in the voice channel    
+    resource = createAudioResource(stream, { inlineVolume: true });
+    if (resource.volume) {
+      resource.volume.setVolume(defaultVolumeLevel);
+    }
+  } catch (error) {
+      console.error('Error setting volume:', error);
+  }
+
   // Remove all existing listeners to prevent leaks
   player.removeAllListeners('error');
   player.removeAllListeners(AudioPlayerStatus.Idle);
@@ -353,6 +383,8 @@ function setupPlayerEvents(player, resource, stream, timeoutId) {
       // Remove all listeners to avoid memory leaks
       player.removeAllListeners();
   });
+
+  player.play(resource);
 }
 
 function getPlayer(guildId) {
@@ -364,6 +396,16 @@ function getPlayer(guildId) {
   }
   return player;
 }
+
+const setVolumeCommand = new SlashCommandBuilder()
+  .setName("set-volume")
+  .setDescription("Set the default volume for the bot")
+  .addIntegerOption((option) =>
+      option
+        .setName("volume")
+        .setDescription("Volume level (0-100)")
+        .setRequired(true),
+  )
 
 const approveRoleOrUserCommand = new SlashCommandBuilder()
   .setName("approve-role-or-user")
@@ -464,6 +506,7 @@ async function registerCommands() {
     const rest = new REST({ version: "9" }).setToken(process.env.DISCORD_TOKEN);
     await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), {
       body: [
+        setVolumeCommand.toJSON(),
         approveRoleOrUserCommand.toJSON(),
         disapproveRoleOrUserCommand.toJSON(),
         setThemeCommand.toJSON(),
@@ -516,9 +559,11 @@ async function playSoundBite(interaction, channel, url) {
       await maintainConnection(channel, player);
       // const trackInfo = await scdl.getInfo(url);
       const stream = await scdl.download(url);
-      const resource = createAudioResource(stream);
-      player.play(resource);
-      setupPlayerEvents(player, resource, stream);
+
+      // Get the IDs of users in the voice channel
+      const userIds = channel.members.map(member => member.user.id);
+
+      setupPlayerEvents(player, stream);
     } catch (error) {
       console.error("Error playing soundbite:", error);
     }
@@ -535,9 +580,7 @@ async function playYoutube(channel, url) {
       const player = getPlayer(channel.guild.id);
       await maintainConnection(channel, player);
       const stream = ytdl(url, { quality: "highestaudio" });
-      const resource = createAudioResource(stream);
-      player.play(resource);
-      setupPlayerEvents(player, resource, stream);
+      setupPlayerEvents(player, stream);
     } catch (error) {
         console.error("Error playing YouTube component:", error);
     }
@@ -562,17 +605,13 @@ async function playThemeSong(channel, url, duration) {
         return;
     }
 
-    const resource = createAudioResource(stream);
-
-    player.play(resource);
-
     const timeoutId = setTimeout(() => {
         if (player.state.status !== AudioPlayerStatus.Idle) {
             player.stop();
         }
     }, duration * 1000);
     
-    setupPlayerEvents(player, resource, stream, timeoutId);
+    setupPlayerEvents(player, stream, timeoutId);
 
   } catch (error) {
       console.error("Error playing theme song:", error);
@@ -674,7 +713,44 @@ client.on("interactionCreate", async (interaction) => {
 
   if (interaction.isCommand()) {
 
-    if (interaction.commandName === "approve-role-or-user") {
+    if (interaction.commandName === 'set-volume') {
+      const volume = interaction.options.getInteger('volume');
+
+      // Validate the volume level
+      if (volume < 0 || volume > 100) {
+          await interaction.reply({
+            content: `Volume must be between 0 and 100.`,
+            ephemeral: true,
+          });
+    
+          return;
+      }
+
+      // Convert to a decimal value (0-1)
+      defaultVolumeLevel = volume / 100;
+
+      try {
+        // Update the volume in the MongoDB collection
+        await volumeCollection.updateOne(
+            { _id: "defaultVolume" },
+            { $set: { value: defaultVolumeLevel } },
+            { upsert: true }
+        );
+
+        await interaction.reply({
+          content: `Default volume set to ${volume}%.`,
+          ephemeral: true,
+        });
+  
+      } catch (error) {
+          console.error("Error updating volume in MongoDB:", error);
+          await interaction.reply({
+            content: 'Failed to set volume. Please try again later.',
+            ephemeral: true,
+          });
+      }
+
+    } else if (interaction.commandName === "approve-role-or-user") {
       await approveRoleOrUser(interaction);
     }
 
