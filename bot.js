@@ -38,9 +38,6 @@ const mongoClient = new MongoClient(process.env.MONGODB_URI, {
   useUnifiedTopology: true,
 });
 
-let rolesCollection;
-let usersCollection;
-let volumeCollection;
 let defaultVolumeLevel = 0.4; // Default to 40% if none is found in the database
 
 async function connectToMongoDB() {
@@ -51,8 +48,6 @@ async function connectToMongoDB() {
       const db = mongoClient.db("theme_songsDB");
 
       // Initialize collections
-      rolesCollection = db.collection("approvedRoles");
-      usersCollection = db.collection("approvedUsers");
       volumeCollection = db.collection("volumeSettings");
 
       // Fetch the existing default volume from the collection
@@ -69,6 +64,9 @@ async function connectToMongoDB() {
 }
 
 connectToMongoDB();
+
+const rolesCollection = mongoClient.db("theme_songsDB").collection("approvedRoles");
+const usersCollection = mongoClient.db("theme_songsDB").collection("approvedUsers");
 
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}!`);
