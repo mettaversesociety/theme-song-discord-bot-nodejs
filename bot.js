@@ -523,8 +523,8 @@ async function registerCommands() {
 
 async function setMemberThemeSong(userId, url, duration, username) {
   // Regular expressions for SoundCloud and YouTube URLs
-  const soundcloudRegex = /^https?:\/\/(www\.)?soundcloud\.com\/[a-zA-Z0-9-_]+\/[a-zA-Z0-9-_]+$/;
-  const youtubeRegex = /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\/.+$/;
+  const soundcloudRegex = /^(https?:\/\/)?(www\.)?soundcloud\.com\/.+$/;
+  const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
   
   // Validate the URL
   if (typeof url !== 'string' || (!soundcloudRegex.test(url) && !youtubeRegex.test(url))) {
