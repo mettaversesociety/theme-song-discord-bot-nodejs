@@ -396,7 +396,7 @@ function getPlayer(guildId) {
 }
 
 const setVolumeCommand = new SlashCommandBuilder()
-  .setName("set-volume")
+  .setName("volume")
   .setDescription("Set the default volume for the bot")
   .addIntegerOption((option) =>
       option
@@ -722,7 +722,7 @@ client.on("interactionCreate", async (interaction) => {
 
   if (interaction.isCommand()) {
 
-    if (interaction.commandName === 'set-volume') {
+    if (interaction.commandName === 'volume') {
       const volume = interaction.options.getInteger('volume');
 
       // Validate the volume level
