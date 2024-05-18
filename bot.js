@@ -522,10 +522,21 @@ async function registerCommands() {
 }
 
 async function setMemberThemeSong(userId, url, duration, username) {
+  // Regular expressions for SoundCloud and YouTube URLs
+  const soundcloudRegex = /^https?:\/\/(www\.)?soundcloud\.com\/[a-zA-Z0-9-_]+\/[a-zA-Z0-9-_]+$/;
+  const youtubeRegex = /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\/.+$/;
+  
+  // Validate the URL
+  if (typeof url !== 'string' || (!soundcloudRegex.test(url) && !youtubeRegex.test(url))) {
+    console.error("Invalid URL format. Please provide a valid SoundCloud or YouTube URL.");
+    throw new Error("Invalid URL format. Please provide a valid SoundCloud or YouTube URL.");
+  }
+
   try {
     const usersCollection = mongoClient
       .db("theme_songsDB")
       .collection("themeSongs");
+      
     await usersCollection.updateOne(
       { _id: userId },
       { $set: { theme_song: { url, duration, username } } },
