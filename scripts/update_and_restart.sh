@@ -7,6 +7,6 @@ cd /home/edwin/Documents/Coding/theme-song-discord-bot-nodejs
 git pull
 
 # Restart the systemd service
-sudo systemctl restart bot.js
+sudo systemctl restart discord-bot.service
 
 echo "Update and restart complete."
