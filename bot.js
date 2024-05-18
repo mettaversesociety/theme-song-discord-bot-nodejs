@@ -530,17 +530,13 @@ async function setMemberThemeSong(userId, url, duration, username) {
   if (typeof url !== 'string' || (!soundcloudRegex.test(url) && !youtubeRegex.test(url))) {
     console.error("Invalid URL format. Please provide a valid SoundCloud or YouTube URL.");
     throw new Error("Invalid URL format. Please provide a valid SoundCloud or YouTube URL.");
-    await interaction.reply({
-      content: `Invalid URL format. Please provide a valid SoundCloud or YouTube URL.`,
-      ephemeral: true,
-    });
   }
 
   try {
     const usersCollection = mongoClient
       .db("theme_songsDB")
       .collection("themeSongs");
-
+      
     await usersCollection.updateOne(
       { _id: userId },
       { $set: { theme_song: { url, duration, username } } },
