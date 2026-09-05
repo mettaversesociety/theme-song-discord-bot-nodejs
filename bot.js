@@ -449,8 +449,10 @@ function ffmpegCut(src, out, start, duration) {
 
 async function cacheYoutubeClip(userId, url, duration) {
   const out = clipPathFor(userId, url, duration);
-  if (fs.existsSync(out) && fs.statSync(out).size > 1000) {
-    return { file: out, title: "" };
+  try {
+    if (fs.existsSync(out)) fs.unlinkSync(out);
+  } catch {
+    /* recut from source */
   }
 
   const key = clipKey(userId, url, duration);
@@ -519,7 +521,11 @@ async function cacheSoundcloudClip(userId, url, duration) {
   } catch {
     /* title is optional; audio still clips */
   }
-  if (fs.existsSync(out) && fs.statSync(out).size > 1000) return { file: out, title };
+  try {
+    if (fs.existsSync(out)) fs.unlinkSync(out);
+  } catch {
+    /* recut from source */
+  }
 
   const start = parseStartSeconds(url);
   const len = clampDuration(duration);
@@ -546,13 +552,23 @@ async function buildThemeClip(userId, url, duration) {
   if (!file || !fs.existsSync(file) || fs.statSync(file).size < 1000) {
     throw new Error("Failed to clip audio.");
   }
-  return { buf: fs.readFileSync(file), title: cleanTitle(result.title) };
+  const buf = fs.readFileSync(file);
+  try {
+    fs.unlinkSync(file);
+  } catch {
+    /* mongo holds the clip */
+  }
+  return { buf, title: cleanTitle(result.title) };
 }
 
 function audioBufferFromTheme(theme) {
   if (!theme || !theme.audio) return null;
   const raw = theme.audio.buffer || theme.audio;
-  const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+  // Always copy: Binary.buffer is a view into the BSON packet and can be
+  // overwritten when the driver reuses memory for later reads.
+  const buf = Buffer.isBuffer(raw) || ArrayBuffer.isView(raw)
+    ? Buffer.from(raw)
+    : Buffer.from(raw);
   return buf.length > 1000 ? buf : null;
 }
 
@@ -785,11 +801,7 @@ async function previewMemberAudio(userId) {
 async function assignLibraryClip(clipId, userId, username, cooldownMinutes = null) {
   const { clip, buf } = await resolveClipAudio(clipId);
   if (!buf) throw Object.assign(new Error("That clip is not in the library."), { status: 404 });
-  const existing = await getMemberThemeSong(userId);
-  const minutes =
-    cooldownMinutes === null || cooldownMinutes === undefined
-      ? userCooldownMinutesFromTheme(existing)
-      : normalizeUserCooldownMinutes(cooldownMinutes);
+  const minutes = normalizeUserCooldownMinutes(cooldownMinutes);
   await themesCollection().updateOne(
     { _id: userId },
     {
@@ -813,27 +825,59 @@ async function assignLibraryClip(clipId, userId, username, cooldownMinutes = nul
   return { duration: clip.duration, url: clip.url, clipped: false };
 }
 
-async function deleteLibraryClip(clipId, guildMemberIds) {
-  const restrictToGuild = Array.isArray(guildMemberIds);
-  const memberSet = new Set((guildMemberIds || []).map(String));
+function themeUsesLibraryClip(song, clipId, clip) {
+  if (!song || !song.url) return false;
+  if (song.clipId && String(song.clipId) === String(clipId)) return true;
+  const id = libraryClipKey(song.url, song.duration);
+  if (id === clipId) return true;
+  if (!clip || !clip.url) return false;
+  const songStart = song.start != null ? Number(song.start) : parseStartSeconds(song.url);
+  const clipStart = clip.start != null ? Number(clip.start) : parseStartSeconds(clip.url);
+  return (
+    trackKey(song.url) === trackKey(clip.url) &&
+    Number(song.duration) === Number(clip.duration) &&
+    songStart === clipStart
+  );
+}
+
+function removeDiskClipFiles(clipId, url, duration) {
+  const prefixes = new Set();
+  if (clipId) prefixes.add(String(clipId));
+  if (url) {
+    try {
+      prefixes.add(libraryClipKey(url, duration));
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!prefixes.size) return;
+  for (const name of fs.readdirSync(CLIPS_DIR)) {
+    if (name.startsWith(".")) continue;
+    const matched = [...prefixes].some((prefix) => name === `${prefix}.ogg` || name.startsWith(`${prefix}.`));
+    if (!matched) continue;
+    try {
+      fs.unlinkSync(path.join(CLIPS_DIR, name));
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+async function deleteLibraryClip(clipId) {
+  const clip = await clipsCollection().findOne({ _id: clipId }, { projection: { audio: 0 } });
   const themes = await themesCollection()
-    .find({ "theme_song.url": { $exists: true } }, { projection: { "theme_song.url": 1, "theme_song.duration": 1, "theme_song.clipId": 1 } })
+    .find(
+      { "theme_song.url": { $exists: true } },
+      { projection: { "theme_song.url": 1, "theme_song.duration": 1, "theme_song.clipId": 1, "theme_song.start": 1 } },
+    )
     .toArray();
   for (const doc of themes) {
-    const song = doc.theme_song || {};
-    const id = song.clipId || (song.url ? libraryClipKey(song.url, song.duration) : null);
-    if (id !== clipId) continue;
-    if (restrictToGuild && !memberSet.has(String(doc._id))) continue;
+    if (!themeUsesLibraryClip(doc.theme_song, clipId, clip)) continue;
     await deleteMemberThemeSong(doc._id);
   }
-  const remaining = await themesCollection()
-    .find({ "theme_song.url": { $exists: true } }, { projection: { "theme_song.url": 1, "theme_song.duration": 1, "theme_song.clipId": 1 } })
-    .toArray();
-  const stillUsed = remaining.some((doc) => {
-    const song = doc.theme_song || {};
-    return (song.clipId || (song.url && libraryClipKey(song.url, song.duration))) === clipId;
-  });
-  if (!stillUsed) await clipsCollection().deleteOne({ _id: clipId });
+  await clipsCollection().deleteOne({ _id: clipId });
+  if (clip && clip.url) removeDiskClipFiles(clipId, clip.url, clip.duration);
+  else removeDiskClipFiles(clipId);
 }
 
 async function setMemberCooldownMinutes(userId, cooldownMinutes) {
@@ -1123,14 +1167,53 @@ async function startThemePlayback({ channel, url, duration, userId }) {
     const connectP = maintainConnection(target, player);
 
     const saved = await getMemberThemeSong(userId);
-    const audioBytes = audioBufferFromTheme(saved);
+    // Prefer library clip audio (same source as Theme Desk preview) so join
+    // playback cannot drift from what was assigned/clipped.
+    let audioBytes = null;
+    let playMeta = {
+      title: (saved && saved.title) || "",
+      clipId: (saved && saved.clipId) || "",
+      source: "none",
+    };
+    if (saved && saved.clipId) {
+      const resolved = await resolveClipAudio(saved.clipId);
+      if (resolved && resolved.buf) {
+        audioBytes = Buffer.from(resolved.buf);
+        playMeta.source = "library:" + saved.clipId;
+        if (resolved.clip && resolved.clip.title) playMeta.title = resolved.clip.title;
+      }
+    }
+    if (!audioBytes) {
+      audioBytes = audioBufferFromTheme(saved);
+      if (audioBytes) {
+        audioBytes = Buffer.from(audioBytes);
+        playMeta.source = "theme_song.audio";
+      }
+    }
+    if (!audioBytes && saved && saved.url) {
+      const resolved = await resolveClipAudio(libraryClipKey(saved.url, saved.duration));
+      if (resolved && resolved.buf) {
+        audioBytes = Buffer.from(resolved.buf);
+        playMeta.source = "libraryKey";
+        if (resolved.clip && resolved.clip.title) playMeta.title = resolved.clip.title;
+      }
+    }
+
     let stream;
     let playOpts = {};
 
     if (audioBytes) {
+      console.log(
+        "Playing theme for",
+        userId,
+        "title=" + (playMeta.title || "?"),
+        "source=" + playMeta.source,
+        "bytes=" + audioBytes.length,
+      );
       stream = Readable.from(audioBytes);
       playOpts = { inlineVolume: false, inputType: StreamType.OggOpus };
     } else if (isSoundcloudUrl(url)) {
+      console.log("Playing live SoundCloud theme for", userId, url);
       stream = await scdl.download(url);
     } else {
       console.error("No saved clip for", userId, "- refusing live YouTube on join");
