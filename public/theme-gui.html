@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#120c09" />
+  <title>League of Banter · Theme Desk</title>
+  <style>
+    :root {
+      --bg: #120c09;
+      --bg-raise: #1a120d;
+      --bg-well: #0d0806;
+      --ink: #f2e7d3;
+      --ink-dim: #b9a68b;
+      --ink-faint: #7d6d58;
+      --gold: #d4b15a;
+      --gold-bright: #f2d78d;
+      --gold-deep: #9c7c33;
+      --wine: #7e2738;
+      --ok: #8fbf7f;
+      --bad: #e07a6a;
+      --line: rgba(212, 177, 90, 0.16);
+      --line-soft: rgba(242, 231, 211, 0.08);
+      --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      --sans: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
+      --mono: "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background:
+        radial-gradient(1100px 480px at 18% -12%, rgba(126, 39, 56, 0.30), transparent 58%),
+        radial-gradient(820px 420px at 95% -6%, rgba(212, 177, 90, 0.13), transparent 52%),
+        radial-gradient(1400px 900px at 50% 120%, rgba(212, 177, 90, 0.05), transparent 60%),
+        var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--gold-bright); }
+
+    :focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+
+    .wrap { max-width: 1020px; margin: 0 auto; padding: 0 20px; }
+
+    /* ---------- header ---------- */
+    header { padding: 30px 0 0; }
+    .masthead {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--line);
+    }
+    .kicker {
+      margin: 0 0 4px;
+      font-size: 11px;
+      letter-spacing: 0.26em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .kicker::before, .kicker::after { content: "✦"; opacity: 0.6; }
+    .kicker::before { margin-right: 8px; }
+    .kicker::after { margin-left: 8px; }
+    h1 {
+      margin: 0;
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: clamp(28px, 5vw, 38px);
+      letter-spacing: 0.01em;
+      color: var(--gold-bright);
+      text-shadow: 0 0 32px rgba(212, 177, 90, 0.25);
+    }
+    .who { margin: 6px 0 0; color: var(--ink-dim); font-size: 13px; }
+
+    /* house rule: server cooldown block in the header */
+    .house-rule {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: flex-end;
+    }
+    .house-rule .label {
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+    }
+    .house-rule .controls { display: flex; align-items: center; gap: 8px; }
+
+    /* ---------- desk bar ---------- */
+    .desk-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 18px 0 14px;
+    }
+    .desk-bar .left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .roster-count { color: var(--ink-dim); font-size: 13px; }
+    .roster-count strong { color: var(--ink); font-weight: 600; }
+
+    .filter {
+      background: var(--bg-well);
+      border: 1px solid var(--line-soft);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 7px 14px;
+      font: inherit;
+      font-size: 13px;
+      width: 200px;
+      transition: border-color 0.15s;
+    }
+    .filter::placeholder { color: var(--ink-faint); }
+    .filter:focus { border-color: var(--gold-deep); outline: none; }
+
+    /* ---------- buttons ---------- */
+    button { font: inherit; cursor: pointer; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn {
+      appearance: none;
+      background: transparent;
+      border: 1px solid rgba(212, 177, 90, 0.45);
+      color: var(--gold-bright);
+      border-radius: 999px;
+      padding: 8px 16px;
+      font-size: 13px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .btn:hover:not(:disabled) { border-color: var(--gold); background: rgba(212, 177, 90, 0.08); }
+
+    .btn-primary {
+      background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+      border-color: transparent;
+      color: #241708;
+      font-weight: 600;
+      box-shadow: 0 1px 12px rgba(212, 177, 90, 0.25);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(180deg, #f7e0a2, var(--gold));
+      box-shadow: 0 1px 16px rgba(212, 177, 90, 0.4);
+    }
+
+    .btn-quiet {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--ink-dim);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+    .btn-quiet:hover { color: var(--gold-bright); border-color: var(--line); }
+
+    .btn-danger { border-color: rgba(224, 122, 106, 0.5); color: var(--bad); }
+    .btn-danger:hover:not(:disabled) { border-color: var(--bad); background: rgba(224, 122, 106, 0.08); }
+
+    /* ---------- segmented cooldown control ---------- */
+    .seg {
+      display: inline-flex;
+      background: var(--bg-well);
+      border: 1px solid var(--line-soft);
+      border-radius: 999px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .seg button {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--ink-dim);
+      border-radius: 999px;
+      padding: 4px 11px;
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: nowrap;
+      transition: color 0.12s, background 0.12s;
+    }
+    .seg button:hover:not(.on) { color: var(--ink); }
+    .seg button.on {
+      background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+      color: #241708;
+      font-weight: 600;
+    }
+
+    .min-wrap {
+      display: inline-flex;
+      align-items: center;
+      background: var(--bg-well);
+      border: 1px solid var(--line-soft);
+      border-radius: 999px;
+      padding: 2px 10px 2px 4px;
+      gap: 4px;
+      transition: border-color 0.15s;
+    }
+    .min-wrap:focus-within { border-color: var(--gold-deep); }
+    .min-wrap.on { border-color: var(--gold-deep); }
+    .min-wrap.on input { color: var(--gold-bright); }
+    .min-wrap input {
+      width: 44px;
+      background: transparent;
+      border: 0;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 12px;
+      text-align: right;
+      padding: 4px 2px;
+      -moz-appearance: textfield;
+    }
+    .min-wrap input::-webkit-inner-spin-button,
+    .min-wrap input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .min-wrap input:focus { outline: none; }
+    .min-wrap .unit { font-size: 11px; color: var(--ink-faint); }
+
+    /* ---------- roster ---------- */
+    .roster {
+      list-style: none;
+      margin: 0 0 60px;
+      padding: 0;
+      background: var(--bg-raise);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(242, 231, 211, 0.04);
+    }
+    .roster-head {
+      display: grid;
+      grid-template-columns: minmax(150px, 1.1fr) minmax(180px, 1.6fr) auto max-content;
+      gap: 8px 18px;
+      align-items: center;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(212, 177, 90, 0.04);
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+    }
+    .row {
+      display: grid;
+      grid-template-columns: minmax(150px, 1.1fr) minmax(180px, 1.6fr) auto max-content;
+      gap: 8px 18px;
+      align-items: center;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line-soft);
+      transition: background 0.12s;
+    }
+    .row:last-child { border-bottom: 0; }
+    .row:hover { background: rgba(212, 177, 90, 0.045); }
+
+    .member { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .medal {
+      flex: none;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-family: var(--serif);
+      font-size: 16px;
+      color: var(--gold-bright);
+      background: radial-gradient(circle at 32% 28%, rgba(212, 177, 90, 0.28), rgba(212, 177, 90, 0.07));
+      border: 1px solid rgba(212, 177, 90, 0.35);
+      text-transform: uppercase;
+      user-select: none;
+    }
+    .member .name {
+      font-family: var(--serif);
+      font-size: 16px;
+      letter-spacing: 0.01em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .member .name.silent { color: var(--ink-faint); font-style: italic; }
+
+    .clip { min-width: 0; }
+    .clip a {
+      display: block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--ink);
+      text-decoration: none;
+      font-size: 13px;
+    }
+    .clip a:hover { color: var(--gold-bright); text-decoration: underline; }
+    .clip .meta {
+      margin-top: 2px;
+      font-size: 11.5px;
+      color: var(--ink-faint);
+      font-family: var(--mono);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .clip .meta .warn { color: var(--bad); }
+
+    .shelf-wrap { margin: 28px 0 60px; }
+    .shelf-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0 2px 10px;
+    }
+    .shelf-head h2 {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: 22px;
+      font-weight: 500;
+      color: var(--gold-bright);
+    }
+    .shelf-head p { margin: 0; color: var(--ink-faint); font-size: 13px; }
+    .shelf {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      background: var(--bg-raise);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .shelf-row {
+      display: grid;
+      grid-template-columns: minmax(180px, 1.8fr) minmax(120px, 1fr) max-content;
+      gap: 10px 16px;
+      align-items: center;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .shelf-row:last-child { border-bottom: 0; }
+    .shelf-row:hover { background: rgba(212, 177, 90, 0.045); }
+    .used-by { color: var(--ink-dim); font-size: 13px; min-width: 0; }
+    .used-by strong { color: var(--ink); font-weight: 500; }
+    .shelf-actions, .actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .btn.playing {
+      border-color: var(--gold);
+      background: rgba(212, 177, 90, 0.16);
+      color: var(--gold-bright);
+    }
+
+    .cd { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .cd .effective {
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--ink-faint);
+      white-space: nowrap;
+    }
+
+    /* ---------- empty state ---------- */
+    .empty-state { padding: 64px 24px; text-align: center; }
+    .empty-state .orn { color: var(--gold); font-size: 20px; letter-spacing: 0.6em; margin-left: 0.6em; }
+    .empty-state h2 {
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: 24px;
+      margin: 14px 0 8px;
+      color: var(--gold-bright);
+    }
+    .empty-state p { color: var(--ink-dim); margin: 0 auto 22px; max-width: 380px; }
+
+    /* ---------- dialog ---------- */
+    dialog {
+      border: 1px solid var(--line);
+      background:
+        radial-gradient(500px 200px at 80% -20%, rgba(126, 39, 56, 0.22), transparent 60%),
+        var(--bg-raise);
+      color: var(--ink);
+      border-radius: 16px;
+      width: min(540px, calc(100vw - 24px));
+      padding: 0;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+    }
+    dialog::backdrop { background: rgba(10, 6, 4, 0.78); backdrop-filter: blur(2px); }
+    .dlg { padding: 26px 26px 22px; }
+    .dlg .kicker { margin-bottom: 2px; }
+    .dlg h2 {
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: 26px;
+      margin: 0 0 6px;
+      color: var(--gold-bright);
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      margin: 16px 0 6px;
+    }
+    .field {
+      width: 100%;
+      background: var(--bg-well);
+      border: 1px solid var(--line-soft);
+      color: var(--ink);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+      font-size: 14px;
+      transition: border-color 0.15s;
+    }
+    .field::placeholder { color: var(--ink-faint); }
+    .field:focus { border-color: var(--gold-deep); outline: none; }
+    .field:disabled { color: var(--ink-dim); background: transparent; border-style: dashed; }
+    select.field { appearance: none; }
+    .select-wrap { position: relative; }
+    .select-wrap::after {
+      content: "▾";
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--gold);
+      pointer-events: none;
+      font-size: 12px;
+    }
+
+    .hint { font-size: 12px; color: var(--ink-faint); margin: 6px 0 0; }
+    .hint code {
+      font-family: var(--mono);
+      font-size: 11px;
+      background: rgba(212, 177, 90, 0.1);
+      border-radius: 4px;
+      padding: 1px 4px;
+      color: var(--gold-bright);
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+
+    /* member picker */
+    .picker { position: relative; }
+    .member-menu {
+      display: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 6px);
+      max-height: 236px;
+      overflow: auto;
+      background: var(--bg-well);
+      border: 1px solid var(--gold-deep);
+      border-radius: 12px;
+      z-index: 5;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    }
+    .member-menu.open { display: block; }
+    .member-menu [role="option"] {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      padding: 9px 12px;
+      color: var(--ink);
+      font-size: 13.5px;
+      cursor: pointer;
+    }
+    .member-menu [role="option"] .handle {
+      color: var(--ink-faint);
+      font-size: 11.5px;
+      font-family: var(--mono);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .member-menu [role="option"]:hover,
+    .member-menu [role="option"].active {
+      background: rgba(212, 177, 90, 0.14);
+      color: var(--gold-bright);
+    }
+    .member-menu .none { padding: 10px 12px; color: var(--ink-faint); font-size: 13px; }
+
+    .dlg-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line-soft);
+    }
+    .dlg-actions .spacer { flex: 1; }
+
+    .busy {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12.5px;
+      color: var(--gold);
+      margin: 12px 0 0;
+    }
+    .busy .flame {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--gold);
+      animation: flicker 0.9s ease-in-out infinite alternate;
+    }
+    @keyframes flicker {
+      from { opacity: 0.35; transform: scale(0.8); }
+      to { opacity: 1; transform: scale(1.15); }
+    }
+
+    /* ---------- toast ---------- */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 22px;
+      transform: translate(-50%, 8px);
+      background: #241a12;
+      border: 1px solid var(--gold-deep);
+      color: var(--ink);
+      padding: 11px 18px;
+      border-radius: 999px;
+      max-width: min(420px, calc(100vw - 32px));
+      font-size: 13px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+      z-index: 20;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast.bad { border-color: var(--bad); color: #f4c4bb; }
+
+    /* ---------- gate ---------- */
+    .gate { max-width: 460px; margin: 16vh auto 0; padding: 0 24px; text-align: center; }
+    .gate .orn { color: var(--gold); font-size: 22px; letter-spacing: 0.6em; margin-left: 0.6em; }
+    .gate h1 { margin-top: 14px; }
+    .gate p { color: var(--ink-dim); }
+    .gate code {
+      font-family: var(--mono);
+      font-size: 13px;
+      background: rgba(212, 177, 90, 0.1);
+      border-radius: 6px;
+      padding: 2px 6px;
+      color: var(--gold-bright);
+    }
+
+    /* ---------- mobile ---------- */
+    @media (max-width: 760px) {
+      .masthead { align-items: flex-start; flex-direction: column; }
+      .house-rule { align-items: flex-start; }
+      .roster-head { display: none; }
+      .row {
+        grid-template-columns: 1fr max-content;
+        grid-template-areas:
+          "member edit"
+          "clip clip"
+          "cd cd";
+        row-gap: 10px;
+        padding: 14px 16px;
+      }
+      .row .member { grid-area: member; }
+      .row .clip { grid-area: clip; }
+      .row .cd { grid-area: cd; }
+      .row .actions { grid-area: edit; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .filter { width: 100%; }
+      .desk-bar .left { width: 100%; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div id="gate" class="gate" hidden>
+    <div class="orn" aria-hidden="true">✦ ✦ ✦</div>
+    <h1>The desk is locked</h1>
+    <p id="gateMsg">Run <code>/set-theme-gui</code> in Discord and use the private link from that reply.</p>
+  </div>
+
+  <div id="app" hidden>
+    <header class="wrap">
+      <div class="masthead">
+        <div>
+          <p class="kicker">League of Banter</p>
+          <h1>Theme Desk</h1>
+          <p class="who" id="who"></p>
+        </div>
+        <div class="house-rule">
+          <span class="label" id="houseRuleLabel">House rule · cooldown between plays</span>
+          <div class="controls" role="group" aria-labelledby="houseRuleLabel">
+            <span class="seg" id="guildSeg">
+              <button type="button" data-gmin="0" aria-pressed="false">Off</button>
+              <button type="button" data-gmin="15" aria-pressed="false">15 min</button>
+            </span>
+            <span class="min-wrap" id="guildMinWrap">
+              <input id="guildMinutes" type="number" min="0" max="1440" inputmode="numeric" aria-label="Custom server cooldown in minutes" />
+              <span class="unit">min</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="desk-bar">
+        <div class="left">
+          <span class="roster-count" id="rosterCount"></span>
+          <input class="filter" id="filter" type="search" placeholder="Filter the roster…" aria-label="Filter themes by member name" />
+        </div>
+        <button class="btn btn-primary" id="addBtn">＋ Add a theme</button>
+      </div>
+
+      <ul class="roster" id="roster" aria-label="Member themes"></ul>
+
+      <section class="shelf-wrap">
+        <div class="shelf-head">
+          <h2>Clip shelf</h2>
+          <p>Already clipped intros. Assign one to someone else without downloading again.</p>
+        </div>
+        <ul class="shelf" id="shelf" aria-label="Saved clips"></ul>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="editor" aria-labelledby="editorTitle">
+    <form class="dlg" id="form" novalidate>
+      <p class="kicker">Theme Desk</p>
+      <h2 id="editorTitle">Add a theme</h2>
+
+      <label for="user">Server member</label>
+      <div class="picker">
+        <input
+          id="user" class="field" autocomplete="off"
+          placeholder="Pick a member, or type to search"
+          role="combobox" aria-expanded="false" aria-controls="memberMenu"
+          aria-autocomplete="list" aria-haspopup="listbox"
+        />
+        <div class="member-menu" id="memberMenu" role="listbox" aria-label="Matching members"></div>
+      </div>
+
+      <label for="url">YouTube or SoundCloud URL</label>
+      <input id="url" class="field" placeholder="https://youtu.be/…?t=12" spellcheck="false" />
+      <p class="hint">Start time comes from <code>t=</code> or <code>start=</code> on the URL. Changing the URL or duration re-clips from that point.</p>
+
+      <div class="grid-2">
+        <div>
+          <label for="duration">Duration (seconds)</label>
+          <input id="duration" class="field" type="number" min="1" max="20" value="10" inputmode="numeric" />
+        </div>
+        <div>
+          <label for="cooldownMode">Cooldown after play</label>
+          <div class="select-wrap">
+            <select id="cooldownMode" class="field">
+              <option value="inherit">Use server default</option>
+              <option value="0">Off</option>
+              <option value="15">15 minutes</option>
+              <option value="custom">Custom minutes</option>
+            </select>
+          </div>
+          <input id="cooldownMinutes" class="field" type="number" min="1" max="1440" value="15" inputmode="numeric" style="margin-top:8px" hidden aria-label="Custom cooldown in minutes" />
+        </div>
+      </div>
+
+      <div class="dlg-actions">
+        <button class="btn btn-primary" id="saveBtn" type="submit">Save</button>
+        <button type="button" class="btn-quiet" id="cancelBtn">Cancel</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-danger" id="deleteBtn" hidden>Delete theme</button>
+      </div>
+      <p class="busy" id="busy" hidden><span class="flame" aria-hidden="true"></span><span id="busyText"></span></p>
+    </form>
+  </dialog>
+
+  <dialog id="assigner" aria-labelledby="assignTitle">
+    <form class="dlg" id="assignForm" novalidate>
+      <p class="kicker">Clip shelf</p>
+      <h2 id="assignTitle">Give this clip to…</h2>
+      <p class="hint" id="assignSummary"></p>
+      <label for="assignUser">Server member</label>
+      <div class="picker">
+        <input
+          id="assignUser" class="field" autocomplete="off"
+          placeholder="Pick a member, or type to search"
+          role="combobox" aria-expanded="false" aria-controls="assignMenu"
+          aria-autocomplete="list"
+        />
+        <div class="member-menu" id="assignMenu" role="listbox" aria-label="Matching members"></div>
+      </div>
+      <div class="dlg-actions">
+        <button class="btn btn-primary" id="assignSave" type="submit">Assign clip</button>
+        <button type="button" class="btn-quiet" id="assignCancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const token = new URLSearchParams(location.search).get("t") || sessionStorage.getItem("themeToken") || "";
+    if (token) {
+      sessionStorage.setItem("themeToken", token);
+      if (location.search) history.replaceState({}, "", location.pathname);
+    }
+    const headers = { "Content-Type": "application/json", "X-Theme-Token": token };
+
+    const $ = (id) => document.getElementById(id);
+    const app = $("app");
+    const gate = $("gate");
+    const toastEl = $("toast");
+    const editor = $("editor");
+    const assigner = $("assigner");
+
+    let currentUserId = null;
+    let selectedUserId = null;
+    let memberTimer = null;
+    let guildCooldownMinutes = 15;
+    let originalClip = { url: "", duration: 10 };
+    let meta = { minDuration: 1, maxDuration: 20, defaultDuration: 10, defaultCooldownMinutes: 15 };
+    let allThemes = [];
+    let allClips = [];
+    let assignClipId = null;
+    let assignSelectedUserId = null;
+    let toastTimer = null;
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function showToast(msg, bad) {
+      toastEl.textContent = msg;
+      toastEl.className = "toast show" + (bad ? " bad" : "");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toastEl.className = "toast" + (bad ? " bad" : ""); }, 4200);
+    }
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, { ...opts, headers: { ...headers, ...(opts.headers || {}) } });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || res.statusText);
+      return body;
+    }
+
+    let previewAudio = null;
+    let previewUrl = null;
+    let previewKey = null;
+    let previewSeq = 0;
+
+    function previewButtonKey(btn) {
+      if (btn.dataset.previewUser) return "user:" + btn.dataset.previewUser;
+      if (btn.dataset.previewClip) return "clip:" + btn.dataset.previewClip;
+      return "";
+    }
+
+    function syncPreviewButtons() {
+      document.querySelectorAll("[data-preview-user], [data-preview-clip]").forEach((btn) => {
+        const on = previewKey && previewButtonKey(btn) === previewKey && previewAudio && !previewAudio.paused;
+        btn.classList.toggle("playing", Boolean(on));
+        btn.textContent = on ? "Stop" : "Play";
+      });
+    }
+
+    function stopPreview() {
+      if (previewAudio) {
+        previewAudio.onended = null;
+        previewAudio.onerror = null;
+        previewAudio.pause();
+        previewAudio.removeAttribute("src");
+        previewAudio.load();
+        previewAudio = null;
+      }
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        previewUrl = null;
+      }
+      previewKey = null;
+      syncPreviewButtons();
+    }
+
+    async function togglePreview(btn) {
+      const key = previewButtonKey(btn);
+      if (!key) return;
+      if (previewKey === key && previewAudio && !previewAudio.paused) {
+        stopPreview();
+        return;
+      }
+      stopPreview();
+      const seq = ++previewSeq;
+      const path = btn.dataset.previewUser
+        ? "/api/themes/" + encodeURIComponent(btn.dataset.previewUser) + "/audio"
+        : "/api/clips/" + encodeURIComponent(btn.dataset.previewClip) + "/audio";
+      btn.disabled = true;
+      try {
+        const res = await fetch(path, { headers: { "X-Theme-Token": token } });
+        if (seq !== previewSeq) return;
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || "Could not load clip.");
+        }
+        const blob = await res.blob();
+        if (seq !== previewSeq) return;
+        previewUrl = URL.createObjectURL(blob);
+        previewAudio = new Audio(previewUrl);
+        previewKey = key;
+        previewAudio.onended = () => stopPreview();
+        previewAudio.onerror = () => {
+          stopPreview();
+          showToast("This browser could not play the clip.", true);
+        };
+        await previewAudio.play();
+        syncPreviewButtons();
+      } catch (err) {
+        if (seq !== previewSeq) return;
+        stopPreview();
+        showToast(err.message, true);
+      } finally {
+        if (btn.dataset.previewUser) {
+          const row = allThemes.find((t) => t.userId === btn.dataset.previewUser);
+          btn.disabled = !row || !row.hasAudio;
+        } else {
+          btn.disabled = false;
+        }
+      }
+    }
+
+    function bindPreviewButtons(root) {
+      root.querySelectorAll("[data-preview-user], [data-preview-clip]").forEach((btn) => {
+        btn.onclick = () => togglePreview(btn);
+      });
+      syncPreviewButtons();
+    }
+
+    function ago(ts) {
+      if (!ts) return "never played";
+      const mins = Math.round((Date.now() - Number(ts)) / 60000);
+      if (mins < 1) return "just now";
+      if (mins < 60) return mins + "m ago";
+      const hrs = Math.round(mins / 60);
+      if (hrs < 48) return hrs + "h ago";
+      return Math.round(hrs / 24) + "d ago";
+    }
+
+    function clipHost(url) {
+      try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
+    }
+
+    /* ---------- server cooldown (header) ---------- */
+
+    function syncGuildControls() {
+      const isOff = guildCooldownMinutes === 0;
+      const is15 = guildCooldownMinutes === 15;
+      document.querySelectorAll("#guildSeg button").forEach((btn) => {
+        const on = Number(btn.dataset.gmin) === guildCooldownMinutes && (isOff || is15);
+        btn.classList.toggle("on", on);
+        btn.setAttribute("aria-pressed", String(on));
+      });
+      $("guildMinutes").value = guildCooldownMinutes;
+      $("guildMinWrap").classList.toggle("on", !isOff && !is15);
+    }
+
+    async function saveGuildMinutes(minutes) {
+      const data = await api("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({ cooldownMinutes: minutes }),
+      });
+      guildCooldownMinutes = data.guildCooldownMinutes;
+      syncGuildControls();
+      showToast(guildCooldownMinutes > 0 ? "House cooldown set to " + guildCooldownMinutes + " min." : "House cooldown is off.");
+      load();
+    }
+
+    $("guildSeg").addEventListener("click", async (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      try { await saveGuildMinutes(Number(btn.dataset.gmin)); }
+      catch (err) { showToast(err.message, true); }
+    });
+
+    $("guildMinutes").addEventListener("change", async (e) => {
+      const v = Number(e.target.value);
+      if (e.target.value === "" || !Number.isFinite(v) || v < 0) { syncGuildControls(); return; }
+      try { await saveGuildMinutes(v); }
+      catch (err) { showToast(err.message, true); syncGuildControls(); }
+    });
+
+    /* ---------- roster ---------- */
+
+    function effectiveCooldownLabel(minutes) {
+      if (minutes === 0) return "off";
+      if (minutes > 0) return minutes + "m";
+      return guildCooldownMinutes > 0 ? "house · " + guildCooldownMinutes + "m" : "house · off";
+    }
+
+    function renderRoster() {
+      const q = $("filter").value.trim().toLowerCase();
+      const themes = q
+        ? allThemes.filter((t) => (t.username || "").toLowerCase().includes(q))
+        : allThemes;
+      const roster = $("roster");
+      const n = allThemes.length;
+      $("rosterCount").innerHTML = n
+        ? `<strong>${n}</strong> theme${n === 1 ? "" : "s"} on the books`
+        : "";
+
+      if (!n) {
+        roster.innerHTML = `
+          <li class="empty-state">
+            <div class="orn" aria-hidden="true">✦ ✦ ✦</div>
+            <h2>No themes on the books</h2>
+            <p>Give someone an entrance. Pick a member, drop a YouTube or SoundCloud link, and the house band handles the rest.</p>
+            <button class="btn btn-primary" id="emptyAddBtn">Add the first theme</button>
+          </li>`;
+        $("emptyAddBtn").onclick = () => openEditor(null);
+        return;
+      }
+      if (!themes.length) {
+        roster.innerHTML = `<li class="empty-state"><p style="margin:0">Nobody on the roster matches “${escapeHtml(q)}”.</p></li>`;
+        return;
+      }
+
+      const head = `
+        <li class="roster-head" aria-hidden="true">
+          <span>Member</span><span>Clip</span><span>Cooldown</span><span></span>
+        </li>`;
+
+      roster.innerHTML = head + themes.map((t) => {
+        const inherit = t.cooldownMinutes === null || t.cooldownMinutes === undefined;
+        const off = t.cooldownMinutes === 0;
+        const fifteen = t.cooldownMinutes === 15;
+        const custom = !inherit && !off && !fifteen;
+        const name = t.username || t.userId;
+        const initial = escapeHtml(String(name).trim().charAt(0) || "?");
+        const safeName = escapeHtml(name);
+        const safeUrl = escapeHtml(t.url);
+        const host = escapeHtml(clipHost(t.url));
+        return `
+        <li class="row">
+          <div class="member">
+            <span class="medal" aria-hidden="true">${initial}</span>
+            <span class="name" title="${safeName}">${safeName}</span>
+          </div>
+          <div class="clip">
+            <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" title="${safeUrl}">${safeUrl}</a>
+            <div class="meta">${host ? host + " · " : ""}${t.duration}s${t.hasAudio ? "" : ' · <span class="warn">no clip yet</span>'} · ${ago(t.lastPlayedAt)}</div>
+          </div>
+          <div class="cd">
+            <span class="seg" data-user="${escapeHtml(t.userId)}" role="group" aria-label="Cooldown for ${safeName}">
+              <button type="button" data-cd="inherit" class="${inherit ? "on" : ""}" aria-pressed="${inherit}">House</button>
+              <button type="button" data-cd="0" class="${off ? "on" : ""}" aria-pressed="${off}">Off</button>
+              <button type="button" data-cd="15" class="${fifteen ? "on" : ""}" aria-pressed="${fifteen}">15m</button>
+            </span>
+            <span class="min-wrap ${custom ? "on" : ""}">
+              <input data-cdmin="${escapeHtml(t.userId)}" type="number" min="1" max="1440" inputmode="numeric"
+                value="${custom ? t.cooldownMinutes : ""}" placeholder="${inherit && guildCooldownMinutes > 0 ? guildCooldownMinutes : "·"}"
+                aria-label="Custom cooldown minutes for ${safeName}" />
+              <span class="unit">min</span>
+            </span>
+            <span class="effective">→ ${effectiveCooldownLabel(t.cooldownMinutes)}</span>
+          </div>
+          <div class="actions">
+            <button class="btn" type="button" data-preview-user="${escapeHtml(t.userId)}" ${t.hasAudio ? "" : "disabled"} aria-label="Preview theme for ${safeName}">Play</button>
+            <button class="btn" data-edit="${escapeHtml(t.userId)}">Edit</button>
+          </div>
+        </li>`;
+      }).join("");
+
+      bindPreviewButtons(roster);
+      roster.querySelectorAll("[data-edit]").forEach((btn) => {
+        btn.onclick = () => openEditor(allThemes.find((t) => t.userId === btn.dataset.edit));
+      });
+      roster.querySelectorAll(".seg[data-user] button").forEach((btn) => {
+        btn.onclick = async () => {
+          const userId = btn.parentElement.dataset.user;
+          const raw = btn.dataset.cd;
+          const minutes = raw === "inherit" ? null : Number(raw);
+          try {
+            await api("/api/themes/" + encodeURIComponent(userId) + "/cooldown", {
+              method: "PATCH",
+              body: JSON.stringify({ cooldownMinutes: minutes }),
+            });
+            load();
+          } catch (e) { showToast(e.message, true); }
+        };
+      });
+      roster.querySelectorAll("input[data-cdmin]").forEach((input) => {
+        input.onchange = async () => {
+          const minutes = Number(input.value);
+          if (!minutes || minutes < 1) return;
+          try {
+            await api("/api/themes/" + encodeURIComponent(input.dataset.cdmin) + "/cooldown", {
+              method: "PATCH",
+              body: JSON.stringify({ cooldownMinutes: minutes }),
+            });
+            load();
+          } catch (e) { showToast(e.message, true); }
+        };
+      });
+    }
+
+    function renderShelf() {
+      const shelf = $("shelf");
+      if (!allClips.length) {
+        shelf.innerHTML = `<li class="empty-state"><p style="margin:0">No clipped intros yet. Save a theme and it lands here for reuse.</p></li>`;
+        return;
+      }
+      shelf.innerHTML = allClips.map((c) => {
+        const names = (c.usedBy || []).map((u) => escapeHtml(u.username)).join(", ");
+        const start = c.start ? "t=" + c.start : "from start";
+        return `
+        <li class="shelf-row">
+          <div class="clip">
+            <a href="${escapeHtml(c.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(c.url)}">${escapeHtml(c.title || c.url)}</a>
+            <div class="meta">${c.title ? escapeHtml(c.url) + " · " : ""}${escapeHtml(clipHost(c.url))} · ${c.duration}s · ${start}</div>
+          </div>
+          <div class="used-by">${
+            c.usedBy && c.usedBy.length
+              ? `<strong>${c.usedBy.length}</strong> on this server · ${names}`
+              : "unused on this server"
+          }</div>
+          <div class="shelf-actions">
+            <button class="btn" type="button" data-preview-clip="${escapeHtml(c.clipId)}" aria-label="Preview clip">Play</button>
+            <button class="btn" type="button" data-assign="${escapeHtml(c.clipId)}">Assign</button>
+            <button class="btn btn-danger" type="button" data-delclip="${escapeHtml(c.clipId)}">Delete</button>
+          </div>
+        </li>`;
+      }).join("");
+      bindPreviewButtons(shelf);
+      shelf.querySelectorAll("[data-assign]").forEach((btn) => {
+        btn.onclick = () => openAssign(allClips.find((c) => c.clipId === btn.dataset.assign));
+      });
+      shelf.querySelectorAll("[data-delclip]").forEach((btn) => {
+        btn.onclick = async () => {
+          const clip = allClips.find((c) => c.clipId === btn.dataset.delclip);
+          const n = clip && clip.usedBy ? clip.usedBy.length : 0;
+          const msg = n
+            ? `Delete this clip and unassign it from ${n} member${n === 1 ? "" : "s"} on this server?`
+            : "Delete this unused clip from the shelf?";
+          if (!confirm(msg)) return;
+          try {
+            await api("/api/clips/" + encodeURIComponent(btn.dataset.delclip), { method: "DELETE" });
+            showToast("Clip removed.");
+            load();
+          } catch (e) { showToast(e.message, true); }
+        };
+      });
+    }
+
+    function openAssign(clip) {
+      if (!clip) return;
+      assignClipId = clip.clipId;
+      assignSelectedUserId = null;
+      $("assignUser").value = "";
+      $("assignSummary").textContent = `${clip.title ? clip.title + " · " : ""}${clip.duration}s · ${clip.url}`;
+      $("assignMenu").classList.remove("open");
+      assigner.showModal();
+      $("assignUser").focus();
+      loadAssignMembers("");
+    }
+
+    async function loadAssignMembers(q) {
+      try {
+        const data = await api("/api/members" + (q ? "?q=" + encodeURIComponent(q) : ""));
+        const menu = $("assignMenu");
+        const members = data.members || [];
+        if (!members.length) {
+          menu.innerHTML = `<div class="none">${q ? "No members match." : "Type a name."}</div>`;
+          menu.classList.add("open");
+          return;
+        }
+        menu.innerHTML = members.map((m) =>
+          `<button type="button" role="option" data-id="${escapeHtml(m.userId)}" data-name="${escapeHtml(m.displayName)}">${escapeHtml(m.displayName)} <span class="handle">@${escapeHtml(m.username)}</span></button>`
+        ).join("");
+        menu.classList.add("open");
+        menu.querySelectorAll("[data-id]").forEach((btn) => {
+          btn.onclick = () => {
+            assignSelectedUserId = btn.dataset.id;
+            $("assignUser").value = btn.dataset.name;
+            menu.classList.remove("open");
+          };
+        });
+      } catch {
+        $("assignMenu").innerHTML = `<div class="none">Could not load members.</div>`;
+        $("assignMenu").classList.add("open");
+      }
+    }
+
+    async function load() {
+      const data = await api("/api/themes");
+      guildCooldownMinutes = data.guildCooldownMinutes;
+      syncGuildControls();
+      allThemes = (data.themes || []).slice().sort((a, b) =>
+        String(a.username || "").localeCompare(String(b.username || ""), undefined, { sensitivity: "base" })
+      );
+      renderRoster();
+      try {
+        const clips = await api("/api/clips");
+        allClips = clips.clips || [];
+        renderShelf();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    $("filter").addEventListener("input", renderRoster);
+
+    /* ---------- editor dialog ---------- */
+
+    function openEditor(row) {
+      currentUserId = row ? row.userId : null;
+      selectedUserId = row ? row.userId : null;
+      $("editorTitle").textContent = row ? "Edit theme" : "Add a theme";
+      $("user").value = row ? row.username : "";
+      $("user").disabled = Boolean(row);
+      $("url").value = row ? row.url : "";
+      $("duration").value = row ? row.duration : meta.defaultDuration;
+      $("duration").min = meta.minDuration ?? 1;
+      $("duration").max = meta.maxDuration ?? 20;
+      originalClip = { url: row ? row.url : "", duration: row ? Number(row.duration) : null };
+      setEditorCooldown(row ? row.cooldownMinutes : null);
+      updateSaveButton();
+      $("deleteBtn").hidden = !row;
+      $("busy").hidden = true;
+      $("saveBtn").disabled = false;
+      hideMembers();
+      editor.showModal();
+      if (!row) {
+        $("user").focus();
+        loadMembers("");
+      } else {
+        $("url").focus();
+      }
+    }
+
+    function setEditorCooldown(minutes) {
+      const mode = $("cooldownMode");
+      const input = $("cooldownMinutes");
+      if (minutes === 0) {
+        mode.value = "0"; input.hidden = true;
+      } else if (minutes === 15) {
+        mode.value = "15"; input.hidden = true; input.value = 15;
+      } else if (minutes > 0) {
+        mode.value = "custom"; input.hidden = false; input.value = minutes;
+      } else {
+        mode.value = "inherit"; input.hidden = true;
+      }
+    }
+
+    function editorCooldownMinutes() {
+      const mode = $("cooldownMode").value;
+      if (mode === "inherit") return null;
+      if (mode === "custom") return Number($("cooldownMinutes").value);
+      return Number(mode);
+    }
+
+    function needsReclip() {
+      const url = $("url").value.trim();
+      const duration = Number($("duration").value);
+      if (!originalClip.url) return true;
+      return url !== originalClip.url || duration !== Number(originalClip.duration);
+    }
+
+    function updateSaveButton() {
+      const clip = needsReclip();
+      $("saveBtn").textContent = clip ? "Clip & save" : "Save";
+      $("busyText").textContent = clip
+        ? "Clipping audio through the house IP — a few seconds…"
+        : "Saving…";
+    }
+
+    /* member picker (combobox) */
+    let menuMembers = [];
+    let activeOption = -1;
+
+    function hideMembers() {
+      $("memberMenu").classList.remove("open");
+      $("user").setAttribute("aria-expanded", "false");
+      $("user").removeAttribute("aria-activedescendant");
+      activeOption = -1;
+    }
+
+    function setActiveOption(idx) {
+      const opts = $("memberMenu").querySelectorAll('[role="option"]');
+      if (!opts.length) return;
+      activeOption = Math.max(0, Math.min(idx, opts.length - 1));
+      opts.forEach((el, i) => {
+        el.classList.toggle("active", i === activeOption);
+        el.setAttribute("aria-selected", String(i === activeOption));
+      });
+      opts[activeOption].scrollIntoView({ block: "nearest" });
+      $("user").setAttribute("aria-activedescendant", "member-opt-" + activeOption);
+    }
+
+    function chooseMember(idx) {
+      const m = menuMembers[idx];
+      if (!m) return;
+      selectedUserId = m.userId;
+      $("user").value = m.displayName;
+      hideMembers();
+      $("url").focus();
+    }
+
+    function renderMembers(members, q) {
+      const menu = $("memberMenu");
+      menuMembers = members;
+      activeOption = -1;
+      if (!members.length) {
+        menu.innerHTML = `<div class="none">${q ? "No members match that search." : "Type a name to search the server."}</div>`;
+      } else {
+        menu.innerHTML = members.map((m, i) =>
+          `<button type="button" role="option" id="member-opt-${i}" data-idx="${i}" aria-selected="false">
+            <span>${escapeHtml(m.displayName)}</span>
+            <span class="handle">@${escapeHtml(m.username)}</span>
+          </button>`
+        ).join("");
+        menu.querySelectorAll("[data-idx]").forEach((btn) => {
+          btn.onclick = () => chooseMember(Number(btn.dataset.idx));
+        });
+      }
+      menu.classList.add("open");
+      $("user").setAttribute("aria-expanded", "true");
+    }
+
+    async function loadMembers(q) {
+      if (currentUserId) return;
+      try {
+        const data = await api("/api/members" + (q ? "?q=" + encodeURIComponent(q) : ""));
+        renderMembers(data.members || [], q);
+      } catch {
+        renderMembers([], q);
+      }
+    }
+
+    $("user").addEventListener("focus", () => {
+      if (currentUserId) return;
+      loadMembers($("user").value.trim());
+    });
+    $("user").addEventListener("input", (e) => {
+      selectedUserId = null;
+      const q = e.target.value.trim();
+      clearTimeout(memberTimer);
+      memberTimer = setTimeout(() => loadMembers(q), 120);
+    });
+    $("user").addEventListener("keydown", (e) => {
+      const open = $("memberMenu").classList.contains("open");
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (!open) { loadMembers($("user").value.trim()); return; }
+        setActiveOption(activeOption + 1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (open) setActiveOption(activeOption - 1);
+      } else if (e.key === "Enter") {
+        if (open && activeOption >= 0) { e.preventDefault(); chooseMember(activeOption); }
+      } else if (e.key === "Escape") {
+        if (open) { e.stopPropagation(); e.preventDefault(); hideMembers(); }
+      } else if (e.key === "Tab") {
+        hideMembers();
+      }
+    });
+    editor.addEventListener("click", (e) => {
+      if (!e.target.closest(".picker")) hideMembers();
+    });
+
+    /* editor wiring */
+    $("cooldownMode").addEventListener("change", () => {
+      const custom = $("cooldownMode").value === "custom";
+      const input = $("cooldownMinutes");
+      input.hidden = !custom;
+      if (custom) input.focus();
+    });
+    $("url").addEventListener("input", updateSaveButton);
+    $("duration").addEventListener("input", updateSaveButton);
+    $("addBtn").addEventListener("click", () => openEditor(null));
+    $("cancelBtn").addEventListener("click", () => editor.close());
+
+    $("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const saveBtn = $("saveBtn");
+      const userField = $("user").value.trim();
+      const url = $("url").value.trim();
+      if (!currentUserId && !selectedUserId && !userField) { showToast("Pick a member first.", true); $("user").focus(); return; }
+      if (!url) { showToast("A YouTube or SoundCloud URL is required.", true); $("url").focus(); return; }
+      saveBtn.disabled = true;
+      updateSaveButton();
+      $("busy").hidden = false;
+      try {
+        const user = currentUserId || selectedUserId || userField;
+        const saved = await api("/api/themes", {
+          method: "POST",
+          body: JSON.stringify({
+            user,
+            url,
+            duration: Number($("duration").value),
+            cooldownMinutes: editorCooldownMinutes(),
+          }),
+        });
+        editor.close();
+        showToast(saved.clipped ? "Clipped and saved." : "Saved.");
+        await load();
+      } catch (err) {
+        showToast(err.message, true);
+      } finally {
+        saveBtn.disabled = false;
+        $("busy").hidden = true;
+      }
+    });
+
+    $("assignUser").addEventListener("focus", () => loadAssignMembers($("assignUser").value.trim()));
+    $("assignUser").addEventListener("input", () => {
+      assignSelectedUserId = null;
+      loadAssignMembers($("assignUser").value.trim());
+    });
+    $("assignCancel").addEventListener("click", () => assigner.close());
+    $("assignForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const user = assignSelectedUserId || $("assignUser").value.trim();
+      if (!assignClipId || !user) {
+        showToast("Pick a member.", true);
+        return;
+      }
+      try {
+        const saved = await api("/api/clips/" + encodeURIComponent(assignClipId) + "/assign", {
+          method: "POST",
+          body: JSON.stringify({ user }),
+        });
+        assigner.close();
+        showToast("Assigned to " + saved.username + " without re-clipping.");
+        load();
+      } catch (err) { showToast(err.message, true); }
+    });
+
+    $("deleteBtn").addEventListener("click", async () => {
+      if (!currentUserId) return;
+      if (!confirm("Delete this theme? The clip is gone for good.")) return;
+      try {
+        await api("/api/themes/" + encodeURIComponent(currentUserId), { method: "DELETE" });
+        editor.close();
+        showToast("Theme deleted.");
+        await load();
+      } catch (err) { showToast(err.message, true); }
+    });
+
+    /* ---------- boot ---------- */
+    (async () => {
+      if (!token) {
+        gate.hidden = false;
+        return;
+      }
+      try {
+        const me = await api("/api/me");
+        meta = me;
+        $("who").textContent =
+          "Signed in as " + me.managerTag + " · " + me.guildName + " · links expire in 2 hours";
+        app.hidden = false;
+        await load();
+      } catch (err) {
+        $("gateMsg").textContent = err.message;
+        gate.hidden = false;
+      }
+    })();
+  </script>
+</body>
+</html>

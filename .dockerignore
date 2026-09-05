@@ -1,0 +1,9 @@
+node_modules
+clips
+.git
+.env
+*.bak
+youtube-cookies.txt
+ts-state
+*.md
+bot.js.bak*

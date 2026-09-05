@@ -1,0 +1,75 @@
+# Banter Butler / theme-song lives in this stack only.
+# Tailscale TUN + shared netns => this project egresses via house exit node
+# 100.111.13.66 (67.251.156.1). Host and every other VPS app stay on OVH.
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: theme-song-tailscale
+    hostname: ovh-theme-bot
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - ./ts-state:/var/lib/tailscale
+    ports:
+      - "127.0.0.1:27017:27017"
+      - "127.0.0.1:3847:3847"
+    environment:
+      TS_AUTH_ONCE: "true"
+      TS_HOSTNAME: ovh-theme-bot
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_EXTRA_ARGS: "--exit-node=100.111.13.66 --exit-node-allow-lan-access"
+    init: true
+
+  mongo:
+    image: mongo:7
+    container_name: theme-song-mongo
+    restart: unless-stopped
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+    volumes:
+      - theme-song-mongo-data:/data/db
+
+  bot:
+    build: .
+    image: theme-song-bot:local
+    container_name: theme-song-bot
+    restart: unless-stopped
+    init: true
+    network_mode: service:tailscale
+    depends_on:
+      - tailscale
+      - mongo
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://127.0.0.1:27017
+    volumes:
+      - ./bot.js:/app/bot.js:ro
+      - ./theme-gui.js:/app/theme-gui.js:ro
+      - ./public:/app/public:ro
+      - ./youtube-cookies.txt:/app/youtube-cookies.txt:ro
+      - ./clips:/app/clips
+
+
+  gui-edge:
+    image: nginx:alpine
+    container_name: theme-song-gui-edge
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - tailscale
+      - bot
+    volumes:
+      - ./gui-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+
+volumes:
+  theme-song-mongo-data:
+    external: true
+    name: theme-song-mongo-data
