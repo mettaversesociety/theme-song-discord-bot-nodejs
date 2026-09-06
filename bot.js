@@ -128,17 +128,34 @@ function effectiveCooldownMs(guildMinutes, userMinutes) {
 const SNOWFLAKE_RE = /^\d{15,22}$/;
 const UPLOAD_URL_RE = /^upload:\/\/([a-f0-9]{16})$/i;
 
-function httpHostname(url) {
-  if (typeof url !== "string" || !url || url.length > 500) return "";
+function parseHttpUrl(url) {
+  if (typeof url !== "string" || !url || url.length > 500) return null;
+  if (/[\u0000-\u001f\s\\]/.test(url) || /%(?:00|5c)/i.test(url)) return null;
   try {
     const parsed = new URL(url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
-    return String(parsed.hostname || "")
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    if (parsed.username || parsed.password) return null;
+    if (parsed.port) return null;
+    const host = String(parsed.hostname || "")
       .toLowerCase()
       .replace(/\.$/, "");
+    if (!host || /[^a-z0-9.-]/.test(host)) return null;
+    const rebuilt = new URL(parsed.protocol + "//" + host + parsed.pathname + parsed.search);
+    rebuilt.hash = "";
+    return rebuilt;
   } catch {
-    return "";
+    return null;
   }
+}
+
+function httpHostname(url) {
+  const parsed = parseHttpUrl(url);
+  return parsed ? parsed.hostname : "";
+}
+
+function sanitizedMediaUrl(url) {
+  const parsed = parseHttpUrl(url);
+  return parsed ? parsed.toString() : "";
 }
 
 function hostIsDomain(hostname, domain) {
@@ -888,6 +905,8 @@ function ffmpegCut(src, out, start, duration) {
 }
 
 async function cacheYoutubeClip(userId, url, duration) {
+  url = sanitizedMediaUrl(url);
+  if (!url || !isYoutubeUrl(url)) throw new Error("Not a YouTube URL");
   const out = clipPathFor(userId, url, duration);
   try {
     if (fs.existsSync(out)) fs.unlinkSync(out);
@@ -953,6 +972,8 @@ async function cacheYoutubeClip(userId, url, duration) {
 }
 
 async function cacheSoundcloudClip(userId, url, duration) {
+  url = sanitizedMediaUrl(url);
+  if (!url || !isSoundcloudUrl(url)) throw new Error("Not a SoundCloud URL");
   const out = clipPathFor(userId, url, duration);
   let title = "";
   try {
@@ -1087,9 +1108,11 @@ async function setMemberThemeSong(userId, url, duration, username, cooldownMinut
   if (isUploadUrl(url)) {
     return assignLibraryClip(uploadClipIdFromUrl(url), userId, username, cooldownMinutes);
   }
-  if (!isYoutubeUrl(url) && !isSoundcloudUrl(url)) {
+  const safe = sanitizedMediaUrl(url);
+  if (!safe || (!isYoutubeUrl(safe) && !isSoundcloudUrl(safe))) {
     throw new Error("Provide a valid YouTube or SoundCloud URL.");
   }
+  url = safe;
   const postedDuration = Number(duration);
   const clippedDuration = clampDuration(duration);
   const minutes = normalizeUserCooldownMinutes(cooldownMinutes);
@@ -1992,8 +2015,16 @@ async function startThemePlayback({ channel, url, duration, userId }) {
       stream = Readable.from(audioBytes);
       playOpts = { inlineVolume: false, inputType: StreamType.OggOpus };
     } else if (isSoundcloudUrl(url)) {
-      console.log("Playing live SoundCloud theme for", userId, url);
-      stream = await withTimeout(scdl.download(url), 20_000, "soundcloud");
+      const safe = sanitizedMediaUrl(url);
+      if (!safe) {
+        console.error("No saved clip for", userId, "- refusing live YouTube on join");
+        connectP.catch(ignoreConnect);
+        session.playingUserId = null;
+        onThemeDone(guildId, generation);
+        return;
+      }
+      console.log("Playing live SoundCloud theme for", userId, safe);
+      stream = await withTimeout(scdl.download(safe), 20_000, "soundcloud");
     } else {
       console.error("No saved clip for", userId, "- refusing live YouTube on join");
       connectP.catch(ignoreConnect);
@@ -2039,7 +2070,8 @@ async function startThemePlayback({ channel, url, duration, userId }) {
 
 async function playSoundBite(interaction, channel, url) {
   await interaction.deferUpdate();
-  if (!isSoundcloudUrl(url)) {
+  url = sanitizedMediaUrl(url);
+  if (!url || !isSoundcloudUrl(url)) {
     return interaction.followUp({ content: "Soundbites must be SoundCloud URLs.", ephemeral: true });
   }
   const guildId = channel.guild.id;
@@ -2058,7 +2090,8 @@ async function playSoundBite(interaction, channel, url) {
 }
 
 async function playYoutube(channel, url) {
-  if (!isYoutubeUrl(url)) throw new Error("Not a YouTube URL");
+  url = sanitizedMediaUrl(url);
+  if (!url || !isYoutubeUrl(url)) throw new Error("Not a YouTube URL");
   const guildId = channel.guild.id;
   await enqueueThemeWork(guildId, async () => {
     cancelThemeSession(guildId);
