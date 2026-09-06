@@ -1646,6 +1646,9 @@ async function recoverThemeAfterVoiceReady(guildId, generation) {
       },
     };
     playResource(player, Readable.from(replay.buf), playOpts, (completed) => onThemeDone(guildId, generation, completed));
+  } catch (error) {
+    console.error("theme recover failed:", error.message || error);
+    if (getThemeSession(guildId).generation === generation) onThemeDone(guildId, generation, false);
   } finally {
     const current = getThemeSession(guildId);
     if (current.generation === generation) current.recovering = false;
