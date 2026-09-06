@@ -33,10 +33,64 @@ function sendAudio(res, preview) {
   res.writeHead(200, {
     "Content-Type": preview.contentType || "audio/wav",
     "Content-Length": body.length,
-    "Cache-Control": "private, max-age=60",
+    "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
   });
   res.end(body);
+}
+
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+
+function readRequestBuffer(req, limit) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        req.destroy();
+        reject(Object.assign(new Error("File is too large (max 8 MB)."), { status: 413 }));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+function parseMultipart(buf, contentType) {
+  const bm = String(contentType || "").match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+  if (!bm) fail(400, "Expected a file upload.");
+  const boundary = Buffer.from("--" + String(bm[1] || bm[2]).trim());
+  const fields = {};
+  const files = {};
+  let pos = 0;
+  while (pos < buf.length) {
+    const start = buf.indexOf(boundary, pos);
+    if (start < 0) break;
+    pos = start + boundary.length;
+    if (buf[pos] === 0x2d && buf[pos + 1] === 0x2d) break;
+    if (buf[pos] === 13) pos += 1;
+    if (buf[pos] === 10) pos += 1;
+    const headerEnd = buf.indexOf(Buffer.from("\r\n\r\n"), pos);
+    if (headerEnd < 0) break;
+    const header = buf.slice(pos, headerEnd).toString("utf8");
+    const nextBound = buf.indexOf(boundary, headerEnd + 4);
+    if (nextBound < 0) break;
+    let bodyEnd = nextBound;
+    if (bodyEnd >= 2 && buf[bodyEnd - 2] === 13 && buf[bodyEnd - 1] === 10) bodyEnd -= 2;
+    const body = buf.slice(headerEnd + 4, bodyEnd);
+    const nameM = header.match(/name="([^"]+)"/i);
+    const fileM = header.match(/filename="([^"]*)"/i);
+    if (nameM) {
+      const name = nameM[1];
+      if (fileM && fileM[1]) files[name] = { filename: fileM[1], data: body };
+      else fields[name] = body.toString("utf8");
+    }
+    pos = nextBound;
+  }
+  return { fields, files };
 }
 
 function readBody(req, limit = 32_000) {
@@ -109,7 +163,7 @@ function pathClipId(pathname, index) {
 }
 
 function parseCooldownMinutes(value) {
-  if (value === null || value === "inherit" || value === "") return null;
+  if (value === null || value === undefined || value === "inherit" || value === "") return null;
   if (value === false) return 0;
   if (value === true) return null;
   const n = Number(value);
@@ -130,6 +184,8 @@ function startThemeGui(deps) {
     deleteLibraryClip,
     previewClipAudio,
     previewMemberAudio,
+    importUploadedClip,
+    trimLibraryClip,
     libraryClipKey,
     getGuildCooldownMinutes,
     setGuildCooldownMinutes,
@@ -144,14 +200,14 @@ function startThemeGui(deps) {
   } = deps;
 
   const port = Number(process.env.THEME_GUI_PORT || 3847);
-  const publicUrl = (process.env.THEME_GUI_URL || "https://leagueofbanter.abrdns.com").replace(/\/$/, "");
+  const publicUrl = (process.env.THEME_GUI_URL || "https://leagueofbanter.com").replace(/\/$/, "");
   setInterval(pruneSessions, 60_000).unref();
 
   async function requireManager(req, url) {
     const session = getSession(tokenFrom(req, url));
     if (!session) fail(401, "Link expired or invalid. Run /set-theme-gui again.");
     const guild = await client.guilds.fetch(session.guildId);
-    const member = await guild.members.fetch(session.userId);
+    const member = await guild.members.fetch({ user: session.userId, force: true });
     if (!canManageThemes(member)) fail(403, "You are not allowed to manage theme songs.");
     return { session, guild, member };
   }
@@ -184,15 +240,17 @@ function startThemeGui(deps) {
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, publicUrl);
-      if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
+      if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || url.pathname === "/index.html")) {
         const html = fs.readFileSync(HTML_PATH, "utf8");
         res.writeHead(200, {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store",
           "X-Content-Type-Options": "nosniff",
           "Referrer-Policy": "no-referrer",
+          "Content-Length": Buffer.byteLength(html),
         });
-        res.end(html);
+        if (req.method === "HEAD") res.end();
+        else res.end(html);
         return;
       }
 
@@ -227,6 +285,8 @@ function startThemeGui(deps) {
             cooldownMinutes: userCooldownMinutesFromTheme(song),
             lastPlayedAt: doc.lastPlayedAt || 0,
             hasAudio: Boolean(doc.hasAudio),
+            clipId: song.clipId || "",
+            start: song.start != null ? Number(song.start) : 0,
           });
         }
         rows.sort((a, b) => String(a.username).localeCompare(String(b.username)));
@@ -263,6 +323,29 @@ function startThemeGui(deps) {
         return;
       }
 
+      if (req.method === "POST" && url.pathname === "/api/clips/upload") {
+        await requireManager(req, url);
+        if (clipBusy) fail(429, "Already clipping another theme. Wait a moment.");
+        clipBusy = true;
+        try {
+          const raw = await readRequestBuffer(req, MAX_UPLOAD_BYTES);
+          const { fields, files } = parseMultipart(raw, req.headers["content-type"]);
+          const file = files.audio || files.file || files.clip;
+          if (!file || !file.data || file.data.length < 100) fail(400, "Choose an audio file to upload.");
+          const saved = await importUploadedClip({
+            audioBuf: file.data,
+            filename: file.filename,
+            title: fields.title,
+            duration: fields.duration,
+            start: fields.start,
+          });
+          json(res, 200, saved);
+        } finally {
+          clipBusy = false;
+        }
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === "/api/clips") {
         const { guild } = await requireManager(req, url);
         const [clips, themes] = await Promise.all([listLibraryClips(), listThemeSongs()]);
@@ -287,6 +370,7 @@ function startThemeGui(deps) {
             title: clip.title || "",
             duration: clip.duration,
             start: clip.start || 0,
+            source: clip.source || (String(clip.url || "").startsWith("upload:") ? "upload" : ""),
             usedBy,
           });
         }
@@ -307,6 +391,24 @@ function startThemeGui(deps) {
         const clipId = pathClipId(url.pathname, 3);
         const title = await getClipTitle(clipId);
         json(res, 200, { title: title || "" });
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname.startsWith("/api/clips/") && url.pathname.endsWith("/trim")) {
+        await requireManager(req, url);
+        if (clipBusy) fail(429, "Already clipping another theme. Wait a moment.");
+        const clipId = pathClipId(url.pathname, 3);
+        const body = await readBody(req);
+        clipBusy = true;
+        try {
+          const saved = await trimLibraryClip(clipId, body.inPoint, body.outPoint, {
+            replace: Boolean(body.replace),
+            title: body.title,
+          });
+          json(res, 200, saved);
+        } finally {
+          clipBusy = false;
+        }
         return;
       }
 
@@ -332,17 +434,9 @@ function startThemeGui(deps) {
       }
 
       if (req.method === "DELETE" && url.pathname.startsWith("/api/clips/")) {
-        const { guild } = await requireManager(req, url);
+        await requireManager(req, url);
         const clipId = pathClipId(url.pathname, 3);
-        const themes = await listThemeSongs();
-        const memberIds = [];
-        for (const doc of themes) {
-          if (!SNOWFLAKE_RE.test(String(doc._id))) continue;
-          const member =
-            guild.members.cache.get(doc._id) || (await guild.members.fetch(doc._id).catch(() => null));
-          if (member) memberIds.push(String(doc._id));
-        }
-        await deleteLibraryClip(clipId, memberIds);
+        await deleteLibraryClip(clipId);
         json(res, 200, { ok: true });
         return;
       }

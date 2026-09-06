@@ -74,12 +74,26 @@ const soundboardState = {};
 const players = new Map();
 const voiceConnections = new Map();
 const themeSessions = new Map();
+const themePlayLocks = new Map();
+const playerPlayIds = new WeakMap();
 let themeGui = null;
 
 function clampDuration(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return DEFAULT_DURATION;
   return Math.min(MAX_DURATION, Math.max(MIN_DURATION, Math.round(n)));
+}
+
+function roundHundredth(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+}
+
+function playDurationMs(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_DURATION * 1000;
+  return Math.min((MAX_DURATION + 1) * 1000, Math.max(300, Math.round(n * 1000) + 400));
 }
 
 function clampCooldownMinutes(value) {
@@ -394,6 +408,137 @@ function spawnStdoutBuffer(bin, args, inputBuf, timeoutMs = 20_000) {
   });
 }
 
+function spawnStdoutNoStdin(bin, args, timeoutMs = 20_000) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const chunks = [];
+    let err = "";
+    let finished = false;
+    const timer = setTimeout(() => {
+      if (finished) return;
+      finished = true;
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        /* ignore */
+      }
+      reject(new Error(`${path.basename(bin)} timed out`));
+    }, timeoutMs);
+    proc.stdout.on("data", (buf) => chunks.push(buf));
+    proc.stderr.on("data", (buf) => {
+      err += buf.toString();
+      if (err.length > 4000) err = err.slice(-2000);
+    });
+    proc.on("error", (error) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+    proc.on("close", (code) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      if (code === 0) resolve(Buffer.concat(chunks));
+      else reject(new Error((err || `exit ${code}`).trim().slice(-400)));
+    });
+  });
+}
+
+const VOICE_PRIME_MS = 150;
+let silenceOgg = null;
+
+async function getSilenceOgg() {
+  if (silenceOgg && silenceOgg.length > 80) return silenceOgg;
+  const pcm = Buffer.alloc(Math.round(48000 * 2 * 2 * (VOICE_PRIME_MS / 1000)));
+  const buf = await spawnStdoutBuffer(
+    ffmpegPath,
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "s16le",
+      "-ar",
+      "48000",
+      "-ac",
+      "2",
+      "-i",
+      "pipe:0",
+      "-c:a",
+      "libopus",
+      "-ar",
+      "48000",
+      "-ac",
+      "2",
+      "-application",
+      "lowdelay",
+      "-f",
+      "ogg",
+      "pipe:1",
+    ],
+    pcm,
+    15_000,
+  );
+  if (!buf || buf.length < 80) throw new Error("silence ogg empty");
+  silenceOgg = buf;
+  return silenceOgg;
+}
+
+function waitMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitVoiceReady(connection) {
+  if (!connection || connection.state.status === VoiceConnectionStatus.Destroyed) {
+    throw new Error("voice connection gone");
+  }
+  if (connection.state.status !== VoiceConnectionStatus.Ready) {
+    await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
+  }
+}
+
+async function primeVoiceAfterReady(player, connection, stillCurrent) {
+  let silence = null;
+  try {
+    silence = await getSilenceOgg();
+  } catch (error) {
+    console.error("voice prime silence failed:", error.message || error);
+  }
+  if (stillCurrent && !stillCurrent()) return;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await waitVoiceReady(connection);
+    if (stillCurrent && !stillCurrent()) return;
+    console.log("voice Ready, priming", VOICE_PRIME_MS, "ms");
+    const started = Date.now();
+    if (silence) {
+      try {
+        playResource(player, Readable.from(silence), { inlineVolume: false, inputType: StreamType.OggOpus });
+      } catch (error) {
+        console.error("voice prime play failed:", error.message || error);
+      }
+    }
+    const left = VOICE_PRIME_MS - (Date.now() - started);
+    if (left > 0) await waitMs(left);
+    if (stillCurrent && !stillCurrent()) return;
+    if (connection.state.status === VoiceConnectionStatus.Ready) return;
+  }
+  await waitVoiceReady(connection);
+  if (stillCurrent && !stillCurrent()) return;
+  console.log("voice Ready after retries, priming", VOICE_PRIME_MS, "ms");
+  const started = Date.now();
+  if (silence) {
+    try {
+      playResource(player, Readable.from(silence), { inlineVolume: false, inputType: StreamType.OggOpus });
+    } catch (error) {
+      console.error("voice prime play failed:", error.message || error);
+    }
+  }
+  const left = VOICE_PRIME_MS - (Date.now() - started);
+  if (left > 0) await waitMs(left);
+}
+
 async function oggOpusToWav(buf) {
   return spawnStdoutBuffer(ffmpegPath, [
     "-hide_banner",
@@ -411,6 +556,200 @@ async function oggOpusToWav(buf) {
     "2",
     "pipe:1",
   ], buf);
+}
+
+async function audioFileToThemeOgg(inputBuf, start, duration) {
+  if (!inputBuf || inputBuf.length < 100) {
+    throw Object.assign(new Error("That file is empty."), { status: 400 });
+  }
+  try {
+    const ogg = await spawnStdoutBuffer(
+      ffmpegPath,
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        "pipe:0",
+        "-ss",
+        String(Math.max(0, start || 0)),
+        "-t",
+        String(clampDuration(duration)),
+        "-filter:a",
+        `volume=${defaultVolumeLevel}`,
+        "-c:a",
+        "libopus",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "-application",
+        "lowdelay",
+        "-f",
+        "ogg",
+        "pipe:1",
+      ],
+      inputBuf,
+      60_000,
+    );
+    if (!ogg || ogg.length < 1000) {
+      throw Object.assign(new Error("Could not read that audio file."), { status: 400 });
+    }
+    return ogg;
+  } catch (error) {
+    if (error && error.status) throw error;
+    throw Object.assign(new Error("Could not read that audio file."), { status: 400 });
+  }
+}
+
+async function importUploadedClip({ audioBuf, filename, title, duration, start }) {
+  const startSec = Math.max(0, Math.round(Number(start) || 0));
+  const clippedDuration = clampDuration(duration || DEFAULT_DURATION);
+  const ogg = await audioFileToThemeOgg(audioBuf, startSec, clippedDuration);
+  const id = crypto
+    .createHash("sha1")
+    .update(`upload|${startSec}|${clippedDuration}|`)
+    .update(ogg)
+    .digest("hex")
+    .slice(0, 16);
+  const fromName = filename ? String(filename).replace(/^.*[\\/]/, "").replace(/\.[^.]+$/, "") : "";
+  const existing = await clipsCollection().findOne({ _id: id }, { projection: { title: 1 } });
+  const resolvedTitle =
+    cleanTitle(title) || cleanTitle(fromName) || (existing && existing.title) || "Uploaded clip";
+  const url = "upload://" + id;
+  await clipsCollection().updateOne(
+    { _id: id },
+    {
+      $set: {
+        url,
+        duration: clippedDuration,
+        start: startSec,
+        title: resolvedTitle,
+        audio: new Binary(ogg),
+        audioFormat: "ogg",
+        source: "upload",
+      },
+      $setOnInsert: { createdAt: new Date() },
+    },
+    { upsert: true },
+  );
+  console.log("imported upload clip", id, ogg.length, "bytes", resolvedTitle);
+  return { clipId: id, title: resolvedTitle, duration: clippedDuration, start: startSec, url };
+}
+
+async function sliceThemeOgg(inputBuf, start, length) {
+  if (!inputBuf || inputBuf.length < 1000) {
+    throw Object.assign(new Error("That clip has no audio to edit."), { status: 404 });
+  }
+  const ogg = await spawnStdoutBuffer(
+    ffmpegPath,
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      "pipe:0",
+      "-ss",
+      String(start),
+      "-t",
+      String(length),
+      "-c:a",
+      "libopus",
+      "-ar",
+      "48000",
+      "-ac",
+      "2",
+      "-application",
+      "lowdelay",
+      "-f",
+      "ogg",
+      "pipe:1",
+    ],
+    inputBuf,
+    30_000,
+  );
+  if (!ogg || ogg.length < 800) {
+    throw Object.assign(new Error("Could not cut that selection."), { status: 400 });
+  }
+  return ogg;
+}
+
+async function trimLibraryClip(clipId, inPoint, outPoint, { replace = false, title } = {}) {
+  const { clip, buf } = await resolveClipAudio(clipId);
+  if (!buf) throw Object.assign(new Error("That clip is not in the library."), { status: 404 });
+  const sourceDur = Math.max(Number(clip.duration) || 0, 0.3);
+  const start = roundHundredth(Math.max(0, Number(inPoint) || 0));
+  const end = roundHundredth(Math.min(sourceDur + 0.05, Number(outPoint)));
+  const length = roundHundredth(end - start);
+  if (!Number.isFinite(end) || length < 0.3) {
+    throw Object.assign(new Error("Mark an in and out at least 0.3 seconds apart."), { status: 400 });
+  }
+  if (length > MAX_DURATION) {
+    throw Object.assign(new Error("Keep the cut at 20 seconds or less."), { status: 400 });
+  }
+  let ogg;
+  try {
+    ogg = await sliceThemeOgg(buf, start, length);
+  } catch (error) {
+    if (error && error.status) throw error;
+    throw Object.assign(new Error("Could not cut that selection."), { status: 400 });
+  }
+  const resolvedTitle = cleanTitle(title) || cleanTitle(clip.title) || "Clip";
+  const newStart = roundHundredth((Number(clip.start) || 0) + start);
+  if (replace) {
+    await clipsCollection().updateOne(
+      { _id: clipId },
+      {
+        $set: {
+          audio: new Binary(ogg),
+          audioFormat: "ogg",
+          duration: length,
+          start: newStart,
+          title: resolvedTitle,
+        },
+      },
+    );
+    await themesCollection().updateMany(
+      { "theme_song.clipId": clipId },
+      {
+        $set: {
+          "theme_song.audio": new Binary(ogg),
+          "theme_song.audioFormat": "ogg",
+          "theme_song.duration": length,
+          "theme_song.start": newStart,
+          "theme_song.title": resolvedTitle,
+        },
+      },
+    );
+    console.log("replaced trimmed clip", clipId, length, "s");
+    return { clipId, title: resolvedTitle, duration: length, start: newStart, replaced: true, url: clip.url || "" };
+  }
+  const id = crypto
+    .createHash("sha1")
+    .update(`trim|${clipId}|${start}|${length}|`)
+    .update(ogg)
+    .digest("hex")
+    .slice(0, 16);
+  const url = clip.url && !String(clip.url).startsWith("upload:") ? clip.url : "upload://" + id;
+  await clipsCollection().updateOne(
+    { _id: id },
+    {
+      $set: {
+        url,
+        duration: length,
+        start: newStart,
+        title: resolvedTitle,
+        audio: new Binary(ogg),
+        audioFormat: "ogg",
+        source: clip.source || (String(clip.url || "").startsWith("upload:") ? "upload" : "trim"),
+        parentClipId: clipId,
+      },
+      $setOnInsert: { createdAt: new Date() },
+    },
+    { upsert: true },
+  );
+  console.log("saved trimmed clip", id, "from", clipId, length, "s");
+  return { clipId: id, title: resolvedTitle, duration: length, start: newStart, replaced: false, url };
 }
 
 async function previewFromOgg(buf) {
@@ -581,27 +920,55 @@ async function connectMongo() {
   console.log("Connected to MongoDB");
 }
 
+function snowflake(id) {
+  return id == null ? "" : String(id);
+}
+
+function loadIdList(values) {
+  return (Array.isArray(values) ? values : []).map(snowflake).filter(Boolean);
+}
+
 async function loadApprovedCaches() {
   const roles = await rolesCollection().find({}).toArray();
-  roles.forEach(({ guildId, roleIds }) => approvedRolesCache.set(guildId, roleIds || []));
+  approvedRolesCache.clear();
+  roles.forEach(({ guildId, roleIds }) => approvedRolesCache.set(snowflake(guildId), loadIdList(roleIds)));
   const users = await approvedUsersCollection().find({}).toArray();
-  users.forEach(({ guildId, userIds }) => approvedUsersCache.set(guildId, userIds || []));
+  approvedUsersCache.clear();
+  users.forEach(({ guildId, userIds }) => approvedUsersCache.set(snowflake(guildId), loadIdList(userIds)));
   console.log("Approved role/user caches loaded");
 }
 
-function hasApprovedRole(member) {
-  const roles = approvedRolesCache.get(member.guild.id) || [];
-  const users = approvedUsersCache.get(member.guild.id) || [];
-  return users.includes(member.id) || member.roles.cache.some((role) => roles.includes(role.id));
+function memberRoleIds(member) {
+  const ids = new Set();
+  if (member?.roles?.cache) {
+    for (const id of member.roles.cache.keys()) ids.add(snowflake(id));
+  }
+  if (Array.isArray(member?._roles)) {
+    for (const id of member._roles) ids.add(snowflake(id));
+  }
+  return ids;
 }
 
-function canManageThemes(member) {
+function hasApprovedRole(member) {
   if (!member) return false;
-  if (member.guild?.ownerId === member.id) return true;
-  if (hasApprovedRole(member)) return true;
+  const guildId = snowflake(member.guild?.id);
+  const roles = approvedRolesCache.get(guildId) || [];
+  const users = approvedUsersCache.get(guildId) || [];
+  if (users.includes(snowflake(member.id))) return true;
+  const have = memberRoleIds(member);
+  return roles.some((id) => have.has(id));
+}
+
+function isGuildAdmin(member) {
+  if (!member) return false;
+  if (snowflake(member.guild?.ownerId) === snowflake(member.id)) return true;
   const perms = member.permissions;
   if (!perms) return false;
   return perms.has(PermissionFlagsBits.Administrator) || perms.has(PermissionFlagsBits.ManageGuild);
+}
+
+function canManageThemes(member) {
+  return isGuildAdmin(member) || hasApprovedRole(member);
 }
 
 function normalizeUserCooldownMinutes(value) {
@@ -740,7 +1107,12 @@ async function listLibraryClips() {
   for (const doc of themes) {
     const song = doc.theme_song || {};
     if (!song.url) continue;
-    const id = song.clipId || libraryClipKey(song.url, song.duration);
+    if (song.clipId) {
+      const prev = byId.get(song.clipId);
+      if (prev && song.title && !prev.title) prev.title = song.title;
+      continue;
+    }
+    const id = libraryClipKey(song.url, song.duration);
     const prev = byId.get(id);
     if (!prev) {
       byId.set(id, {
@@ -770,11 +1142,26 @@ async function resolveClipAudio(clipId) {
     const id = song.clipId || (song.url && libraryClipKey(song.url, song.duration));
     if (id !== clipId) continue;
     const full = await themesCollection().findOne({ _id: doc._id });
-    const buf = audioBufferFromTheme(full && full.theme_song);
+    const songFull = full && full.theme_song;
+    const buf = audioBufferFromTheme(songFull);
     if (!buf) continue;
-    const title = cleanTitle((stored && stored.title) || (full.theme_song && full.theme_song.title));
-    await upsertLibraryClip(full.theme_song.url, full.theme_song.duration, buf, title, { skipTitle: true });
-    return { clip: { ...(stored || {}), ...full.theme_song, _id: clipId, title }, buf };
+    const title = cleanTitle((stored && stored.title) || (songFull && songFull.title));
+    await clipsCollection().updateOne(
+      { _id: clipId },
+      {
+        $set: {
+          url: songFull.url,
+          duration: songFull.duration,
+          start: songFull.start != null ? Number(songFull.start) : parseStartSeconds(songFull.url),
+          title,
+          audio: new Binary(buf),
+          audioFormat: songFull.audioFormat || "ogg",
+        },
+        $setOnInsert: { createdAt: new Date() },
+      },
+      { upsert: true },
+    );
+    return { clip: { ...(stored || {}), ...songFull, _id: clipId, title }, buf };
   }
   return { clip: stored, buf: null };
 }
@@ -784,18 +1171,54 @@ async function previewClipAudio(clipId) {
   return previewFromOgg(buf);
 }
 
+async function resolveAssignedClipAudio(userId) {
+  const saved = await getMemberThemeSong(userId);
+  if (!saved) return { saved: null, buf: null, title: "", clipId: "", source: "none" };
+
+  if (saved.clipId) {
+    const resolved = await resolveClipAudio(saved.clipId);
+    if (resolved && resolved.buf) {
+      return {
+        saved,
+        buf: Buffer.from(resolved.buf),
+        title: cleanTitle((resolved.clip && resolved.clip.title) || saved.title),
+        clipId: saved.clipId,
+        source: "library:" + saved.clipId,
+      };
+    }
+  }
+
+  const fromTheme = audioBufferFromTheme(saved);
+  if (fromTheme) {
+    return {
+      saved,
+      buf: Buffer.from(fromTheme),
+      title: cleanTitle(saved.title),
+      clipId: saved.clipId || "",
+      source: "theme_song.audio",
+    };
+  }
+
+  if (saved.url) {
+    const resolved = await resolveClipAudio(libraryClipKey(saved.url, saved.duration));
+    if (resolved && resolved.buf) {
+      const clipId = (resolved.clip && resolved.clip._id) || libraryClipKey(saved.url, saved.duration);
+      return {
+        saved,
+        buf: Buffer.from(resolved.buf),
+        title: cleanTitle((resolved.clip && resolved.clip.title) || saved.title),
+        clipId,
+        source: "libraryKey:" + clipId,
+      };
+    }
+  }
+
+  return { saved, buf: null, title: cleanTitle(saved.title), clipId: saved.clipId || "", source: "none" };
+}
+
 async function previewMemberAudio(userId) {
-  const theme = await getMemberThemeSong(userId);
-  let buf = audioBufferFromTheme(theme);
-  if (!buf && theme && theme.clipId) {
-    const resolved = await resolveClipAudio(theme.clipId);
-    buf = resolved.buf;
-  }
-  if (!buf && theme && theme.url) {
-    const resolved = await resolveClipAudio(libraryClipKey(theme.url, theme.duration));
-    buf = resolved.buf;
-  }
-  return previewFromOgg(buf);
+  const resolved = await resolveAssignedClipAudio(userId);
+  return previewFromOgg(resolved.buf);
 }
 
 async function assignLibraryClip(clipId, userId, username, cooldownMinutes = null) {
@@ -825,35 +1248,19 @@ async function assignLibraryClip(clipId, userId, username, cooldownMinutes = nul
   return { duration: clip.duration, url: clip.url, clipped: false };
 }
 
-function themeUsesLibraryClip(song, clipId, clip) {
-  if (!song || !song.url) return false;
-  if (song.clipId && String(song.clipId) === String(clipId)) return true;
-  const id = libraryClipKey(song.url, song.duration);
-  if (id === clipId) return true;
-  if (!clip || !clip.url) return false;
-  const songStart = song.start != null ? Number(song.start) : parseStartSeconds(song.url);
-  const clipStart = clip.start != null ? Number(clip.start) : parseStartSeconds(clip.url);
-  return (
-    trackKey(song.url) === trackKey(clip.url) &&
-    Number(song.duration) === Number(clip.duration) &&
-    songStart === clipStart
-  );
+function themeUsesLibraryClip(song, clipId) {
+  if (!song) return false;
+  if (song.clipId) return String(song.clipId) === String(clipId);
+  if (!song.url) return false;
+  return libraryClipKey(song.url, song.duration) === clipId;
 }
 
-function removeDiskClipFiles(clipId, url, duration) {
-  const prefixes = new Set();
-  if (clipId) prefixes.add(String(clipId));
-  if (url) {
-    try {
-      prefixes.add(libraryClipKey(url, duration));
-    } catch {
-      /* ignore */
-    }
-  }
-  if (!prefixes.size) return;
+function removeDiskClipFiles(clipId) {
+  const prefix = String(clipId || "");
+  if (!prefix) return;
   for (const name of fs.readdirSync(CLIPS_DIR)) {
     if (name.startsWith(".")) continue;
-    const matched = [...prefixes].some((prefix) => name === `${prefix}.ogg` || name.startsWith(`${prefix}.`));
+    const matched = name === `${prefix}.ogg` || name.startsWith(`${prefix}.`);
     if (!matched) continue;
     try {
       fs.unlinkSync(path.join(CLIPS_DIR, name));
@@ -865,6 +1272,7 @@ function removeDiskClipFiles(clipId, url, duration) {
 
 async function deleteLibraryClip(clipId) {
   const clip = await clipsCollection().findOne({ _id: clipId }, { projection: { audio: 0 } });
+  let unassigned = 0;
   const themes = await themesCollection()
     .find(
       { "theme_song.url": { $exists: true } },
@@ -872,12 +1280,21 @@ async function deleteLibraryClip(clipId) {
     )
     .toArray();
   for (const doc of themes) {
-    if (!themeUsesLibraryClip(doc.theme_song, clipId, clip)) continue;
-    await deleteMemberThemeSong(doc._id);
+    if (!themeUsesLibraryClip(doc.theme_song, clipId)) continue;
+    const filter = { _id: doc._id };
+    if (doc.theme_song && doc.theme_song.clipId) filter["theme_song.clipId"] = clipId;
+    const cleared = await themesCollection().updateOne(filter, { $unset: { theme_song: "" } });
+    if (cleared.modifiedCount) unassigned += 1;
   }
-  await clipsCollection().deleteOne({ _id: clipId });
-  if (clip && clip.url) removeDiskClipFiles(clipId, clip.url, clip.duration);
-  else removeDiskClipFiles(clipId);
+  const deleted = await clipsCollection().deleteOne({ _id: clipId });
+  removeDiskClipFiles(clipId);
+  console.log(
+    "deleted library clip",
+    clipId,
+    "mongoDeleted=" + deleted.deletedCount,
+    "unassigned=" + unassigned,
+    clip ? "" : "missing-doc",
+  );
 }
 
 async function setMemberCooldownMinutes(userId, cooldownMinutes) {
@@ -974,9 +1391,24 @@ function getThemeSession(guildId) {
       timeoutId: null,
       queue: [],
       generation: 0,
+      clipReplay: null,
+      recovering: false,
     });
   }
   return themeSessions.get(guildId);
+}
+
+function enqueueThemeWork(guildId, fn) {
+  const prev = themePlayLocks.get(guildId) || Promise.resolve();
+  const run = prev.then(fn, fn);
+  themePlayLocks.set(
+    guildId,
+    run.then(
+      () => {},
+      () => {},
+    ),
+  );
+  return run;
 }
 
 function cancelThemeSession(guildId) {
@@ -984,6 +1416,8 @@ function cancelThemeSession(guildId) {
   session.generation += 1;
   session.playingUserId = null;
   session.queue = [];
+  session.clipReplay = null;
+  session.recovering = false;
   if (session.timeoutId) {
     clearTimeout(session.timeoutId);
     session.timeoutId = null;
@@ -1073,12 +1507,28 @@ async function maintainConnection(channel, player) {
   return connection;
 }
 
+function voiceConnectionReady(guildId) {
+  const connection = voiceConnections.get(guildId);
+  return Boolean(connection && connection.state.status === VoiceConnectionStatus.Ready);
+}
+
+function nextPlayId(player) {
+  const id = (playerPlayIds.get(player) || 0) + 1;
+  playerPlayIds.set(player, id);
+  return id;
+}
+
+function currentPlayId(player) {
+  return playerPlayIds.get(player) || 0;
+}
+
 function playResource(player, stream, opts, onDone) {
+  const playId = nextPlayId(player);
   let finished = false;
-  const done = () => {
+  const done = (completed) => {
     if (finished) return;
     finished = true;
-    if (typeof onDone === "function") onDone();
+    if (typeof onDone === "function") onDone(completed !== false);
   };
 
   const inlineVolume = opts.inlineVolume !== false;
@@ -1090,6 +1540,7 @@ function playResource(player, stream, opts, onDone) {
 
   player.removeAllListeners("error");
   player.removeAllListeners(AudioPlayerStatus.Idle);
+  player.removeAllListeners(AudioPlayerStatus.Playing);
 
   player.on("error", (error) => {
     console.error("AudioPlayer error:", error.message || error);
@@ -1098,56 +1549,148 @@ function playResource(player, stream, opts, onDone) {
     } catch {
       /* ignore */
     }
-    done();
+    done(false);
   });
 
-  player.on(AudioPlayerStatus.Idle, () => {
-    try {
-      if (stream && typeof stream.destroy === "function") stream.destroy();
-    } catch {
-      /* ignore */
-    }
-    player.removeAllListeners();
-    done();
-  });
+  const onPlayingCb = typeof opts.onPlaying === "function" ? opts.onPlaying : null;
+  if (onPlayingCb || typeof onDone === "function") {
+    const onPlaying = () => {
+      if (playId !== currentPlayId(player)) return;
+      player.off(AudioPlayerStatus.Playing, onPlaying);
+      if (onPlayingCb) onPlayingCb();
+      if (typeof onDone === "function") {
+        player.on(AudioPlayerStatus.Idle, () => {
+          if (playId !== currentPlayId(player)) return;
+          if (opts.guildId && !voiceConnectionReady(opts.guildId)) {
+            console.log("voice Idle during connection transition; will replay if still current");
+            if (typeof opts.onInterrupted === "function") opts.onInterrupted();
+            return;
+          }
+          try {
+            if (stream && typeof stream.destroy === "function") stream.destroy();
+          } catch {
+            /* ignore */
+          }
+          player.removeAllListeners("error");
+          player.removeAllListeners(AudioPlayerStatus.Idle);
+          done(true);
+        });
+      }
+    };
+    player.on(AudioPlayerStatus.Playing, onPlaying);
+  }
 
   player.play(resource);
 }
 
-function onThemeDone(guildId, generation) {
+function onThemeDone(guildId, generation, completed) {
   const session = getThemeSession(guildId);
   if (session.generation !== generation) return;
   if (session.timeoutId) {
     clearTimeout(session.timeoutId);
     session.timeoutId = null;
   }
+  const userId = session.playingUserId;
   session.playingUserId = null;
+  session.clipReplay = null;
+  if (completed && userId) {
+    markThemePlayed(userId).catch((error) => console.error("markThemePlayed:", error.message || error));
+  }
   const next = session.queue.shift();
   if (next) startThemePlayback(next).catch((err) => console.error("Queued theme failed:", err));
+}
+
+function armClipStopTimer(session, player, generation, duration) {
+  if (session.generation !== generation) return;
+  if (session.timeoutId) clearTimeout(session.timeoutId);
+  session.timeoutId = setTimeout(() => {
+    if (session.generation !== generation) return;
+    if (player.state.status !== AudioPlayerStatus.Idle) player.stop();
+  }, playDurationMs(duration));
+}
+
+async function recoverThemeAfterVoiceReady(guildId, generation) {
+  const session = getThemeSession(guildId);
+  if (session.generation !== generation || !session.clipReplay || session.recovering) return;
+  session.recovering = true;
+  if (session.timeoutId) {
+    clearTimeout(session.timeoutId);
+    session.timeoutId = null;
+  }
+  try {
+    const replay = session.clipReplay;
+    const player = getPlayer(guildId);
+    const connection = voiceConnections.get(guildId);
+    if (!connection) {
+      onThemeDone(guildId, generation, false);
+      return;
+    }
+    try {
+      await waitVoiceReady(connection);
+    } catch {
+      onThemeDone(guildId, generation, false);
+      return;
+    }
+    if (session.generation !== generation || !session.clipReplay) return;
+    if (player.state.status === AudioPlayerStatus.Playing) return;
+    console.log("replaying theme after voice Ready for", replay.userId);
+    await primeVoiceAfterReady(player, connection, () => session.generation === generation);
+    if (session.generation !== generation || !session.clipReplay) return;
+    const playOpts = {
+      inlineVolume: replay.playOpts.inlineVolume,
+      inputType: replay.playOpts.inputType,
+      guildId,
+      onPlaying: () => armClipStopTimer(session, player, generation, replay.duration),
+      onInterrupted: () => {
+        void recoverThemeAfterVoiceReady(guildId, generation);
+      },
+    };
+    playResource(player, Readable.from(replay.buf), playOpts, (completed) => onThemeDone(guildId, generation, completed));
+  } finally {
+    const current = getThemeSession(guildId);
+    if (current.generation === generation) current.recovering = false;
+  }
 }
 
 async function requestThemePlay(channel, url, duration, userId, lastPlayedAt, userCooldownMinutes) {
   if (!channel || !url || !userId) return;
 
-  const guildMinutes = await getGuildCooldownMinutes(channel.guild.id);
+  const guildId = channel.guild.id;
+  const player = getPlayer(guildId);
+  const session = getThemeSession(guildId);
+  if (
+    session.playingUserId === userId &&
+    botVoiceChannelId(guildId) === channel.id &&
+    player.state.status === AudioPlayerStatus.Playing
+  ) {
+    return;
+  }
+
+  const guildMinutes = await getGuildCooldownMinutes(guildId);
   const cooldownMs = effectiveCooldownMs(guildMinutes, userCooldownMinutes);
   if (cooldownMs > 0 && lastPlayedAt && Date.now() - Number(lastPlayedAt) < cooldownMs) {
     console.log("Skipping theme; cooldown active for", userId);
     return;
   }
 
-  const session = getThemeSession(channel.guild.id);
-  if (session.playingUserId === userId || session.queue.some((job) => job.userId === userId)) {
-    console.log("Skipping theme; already playing or queued for", userId);
-    return;
+  if (session.playingUserId) {
+    console.log(
+      session.playingUserId === userId
+        ? "Restarting theme from the beginning for " + userId
+        : "Preempting theme of " + session.playingUserId + " with " + userId,
+    );
+    cancelThemeSession(guildId);
+    player.removeAllListeners("error");
+    player.removeAllListeners(AudioPlayerStatus.Idle);
+    player.removeAllListeners(AudioPlayerStatus.Playing);
+    try {
+      player.stop(true);
+    } catch {
+      /* next playResource replaces the stream */
+    }
   }
 
   const job = { channel, url, duration: clampDuration(duration), userId };
-  if (session.playingUserId) {
-    session.queue.push(job);
-    console.log("Queued theme for", userId, "behind", session.playingUserId);
-    return;
-  }
   await startThemePlayback(job);
 }
 
@@ -1157,7 +1700,6 @@ async function startThemePlayback({ channel, url, duration, userId }) {
   session.generation += 1;
   const generation = session.generation;
   session.playingUserId = userId;
-  await markThemePlayed(userId);
 
   try {
     const player = getPlayer(guildId);
@@ -1165,39 +1707,16 @@ async function startThemePlayback({ channel, url, duration, userId }) {
     const liveChannel = liveMember?.voice?.channel;
     const target = liveChannel && liveChannel.id ? liveChannel : channel;
     const connectP = maintainConnection(target, player);
+    const ignoreConnect = () => {};
+    connectP.catch(ignoreConnect);
 
-    const saved = await getMemberThemeSong(userId);
-    // Prefer library clip audio (same source as Theme Desk preview) so join
-    // playback cannot drift from what was assigned/clipped.
-    let audioBytes = null;
-    let playMeta = {
-      title: (saved && saved.title) || "",
-      clipId: (saved && saved.clipId) || "",
-      source: "none",
+    const assigned = await resolveAssignedClipAudio(userId);
+    const audioBytes = assigned.buf;
+    const playMeta = {
+      title: assigned.title || "",
+      clipId: assigned.clipId || "",
+      source: assigned.source,
     };
-    if (saved && saved.clipId) {
-      const resolved = await resolveClipAudio(saved.clipId);
-      if (resolved && resolved.buf) {
-        audioBytes = Buffer.from(resolved.buf);
-        playMeta.source = "library:" + saved.clipId;
-        if (resolved.clip && resolved.clip.title) playMeta.title = resolved.clip.title;
-      }
-    }
-    if (!audioBytes) {
-      audioBytes = audioBufferFromTheme(saved);
-      if (audioBytes) {
-        audioBytes = Buffer.from(audioBytes);
-        playMeta.source = "theme_song.audio";
-      }
-    }
-    if (!audioBytes && saved && saved.url) {
-      const resolved = await resolveClipAudio(libraryClipKey(saved.url, saved.duration));
-      if (resolved && resolved.buf) {
-        audioBytes = Buffer.from(resolved.buf);
-        playMeta.source = "libraryKey";
-        if (resolved.clip && resolved.clip.title) playMeta.title = resolved.clip.title;
-      }
-    }
 
     let stream;
     let playOpts = {};
@@ -1207,6 +1726,7 @@ async function startThemePlayback({ channel, url, duration, userId }) {
         "Playing theme for",
         userId,
         "title=" + (playMeta.title || "?"),
+        "clipId=" + (playMeta.clipId || "-"),
         "source=" + playMeta.source,
         "bytes=" + audioBytes.length,
       );
@@ -1217,22 +1737,40 @@ async function startThemePlayback({ channel, url, duration, userId }) {
       stream = await scdl.download(url);
     } else {
       console.error("No saved clip for", userId, "- refusing live YouTube on join");
+      connectP.catch(ignoreConnect);
       session.playingUserId = null;
       onThemeDone(guildId, generation);
       return;
     }
 
+    if (session.generation !== generation) {
+      connectP.catch(ignoreConnect);
+      return;
+    }
+
+    const connection = await connectP;
     if (session.generation !== generation) return;
 
-    const timeoutId = setTimeout(() => {
-      if (session.generation !== generation) return;
-      if (player.state.status !== AudioPlayerStatus.Idle) player.stop();
-    }, clampDuration(duration) * 1000);
-    session.timeoutId = timeoutId;
-
-    await connectP;
+    await primeVoiceAfterReady(player, connection, () => session.generation === generation);
     if (session.generation !== generation) return;
-    playResource(player, stream, playOpts, () => onThemeDone(guildId, generation));
+
+    const clipDuration = (assigned.saved && assigned.saved.duration) || duration;
+    if (audioBytes) {
+      session.clipReplay = {
+        userId,
+        buf: audioBytes,
+        playOpts: { inlineVolume: playOpts.inlineVolume, inputType: playOpts.inputType },
+        duration: clipDuration,
+      };
+    } else {
+      session.clipReplay = null;
+    }
+    playOpts.guildId = guildId;
+    playOpts.onPlaying = () => armClipStopTimer(session, player, generation, clipDuration);
+    playOpts.onInterrupted = () => {
+      void recoverThemeAfterVoiceReady(guildId, generation);
+    };
+    playResource(player, stream, playOpts, (completed) => onThemeDone(guildId, generation, completed));
   } catch (error) {
     console.error("Error playing theme song:", error);
     onThemeDone(guildId, generation);
@@ -1366,64 +1904,80 @@ async function sendSoundboard(interaction, soundboard, currentPage, totalPages, 
 
 async function approveRoleOrUser(interaction) {
   const member = interaction.member;
-  if (!canManageThemes(member)) {
-    return interaction.reply({ content: "You cannot approve roles or users.", ephemeral: true });
+  if (!isGuildAdmin(member)) {
+    return interaction.reply({ content: "Only the server owner or admins can approve theme managers.", ephemeral: true });
   }
   const role = interaction.options.getRole("role");
   const user = interaction.options.getUser("user");
   if (!role && !user) {
     return interaction.reply({ content: "Specify a role or a user.", ephemeral: true });
   }
+  const guildId = snowflake(interaction.guild.id);
+  const granted = [];
   if (role) {
-    const approved = approvedRolesCache.get(interaction.guild.id) || [];
-    if (!approved.includes(role.id)) {
-      approved.push(role.id);
-      approvedRolesCache.set(interaction.guild.id, approved);
-      await rolesCollection().updateOne(
-        { guildId: interaction.guild.id },
-        { $addToSet: { roleIds: role.id } },
-        { upsert: true },
-      );
+    const roleId = snowflake(role.id);
+    await rolesCollection().updateOne(
+      { guildId },
+      { $addToSet: { roleIds: roleId } },
+      { upsert: true },
+    );
+    const approved = approvedRolesCache.get(guildId) || [];
+    if (!approved.includes(roleId)) {
+      approved.push(roleId);
+      approvedRolesCache.set(guildId, approved);
     }
-    await interaction.reply({ content: `Role ${role.name} can manage theme songs.`, ephemeral: true });
+    granted.push(`role **${role.name}**`);
   }
   if (user) {
-    const approved = approvedUsersCache.get(interaction.guild.id) || [];
-    if (!approved.includes(user.id)) {
-      approved.push(user.id);
-      approvedUsersCache.set(interaction.guild.id, approved);
-      await approvedUsersCollection().updateOne(
-        { guildId: interaction.guild.id },
-        { $addToSet: { userIds: user.id } },
-        { upsert: true },
-      );
+    const userId = snowflake(user.id);
+    await approvedUsersCollection().updateOne(
+      { guildId },
+      { $addToSet: { userIds: userId } },
+      { upsert: true },
+    );
+    const approved = approvedUsersCache.get(guildId) || [];
+    if (!approved.includes(userId)) {
+      approved.push(userId);
+      approvedUsersCache.set(guildId, approved);
     }
-    await interaction.reply({ content: `User ${user.tag} can manage theme songs.`, ephemeral: true });
+    granted.push(`user **${user.tag}**`);
   }
+  await interaction.reply({
+    content: `${granted.join(" and ")} can manage theme songs and use /set-theme-gui.`,
+    ephemeral: true,
+  });
 }
 
 async function disapproveRoleOrUser(interaction) {
   const member = interaction.member;
-  if (!canManageThemes(member)) {
-    return interaction.reply({ content: "You cannot disapprove roles or users.", ephemeral: true });
+  if (!isGuildAdmin(member)) {
+    return interaction.reply({ content: "Only the server owner or admins can disapprove theme managers.", ephemeral: true });
   }
   const role = interaction.options.getRole("role");
   const user = interaction.options.getUser("user");
   if (!role && !user) {
     return interaction.reply({ content: "Specify a role or a user.", ephemeral: true });
   }
+  const guildId = snowflake(interaction.guild.id);
+  const revoked = [];
   if (role) {
-    const approved = (approvedRolesCache.get(interaction.guild.id) || []).filter((id) => id !== role.id);
-    approvedRolesCache.set(interaction.guild.id, approved);
-    await rolesCollection().updateOne({ guildId: interaction.guild.id }, { $pull: { roleIds: role.id } });
-    await interaction.reply({ content: `Role ${role.name} can no longer manage theme songs.`, ephemeral: true });
+    const roleId = snowflake(role.id);
+    await rolesCollection().updateOne({ guildId }, { $pull: { roleIds: roleId } });
+    const approved = (approvedRolesCache.get(guildId) || []).filter((id) => id !== roleId);
+    approvedRolesCache.set(guildId, approved);
+    revoked.push(`role **${role.name}**`);
   }
   if (user) {
-    const approved = (approvedUsersCache.get(interaction.guild.id) || []).filter((id) => id !== user.id);
-    approvedUsersCache.set(interaction.guild.id, approved);
-    await approvedUsersCollection().updateOne({ guildId: interaction.guild.id }, { $pull: { userIds: user.id } });
-    await interaction.reply({ content: `User ${user.tag} can no longer manage theme songs.`, ephemeral: true });
+    const userId = snowflake(user.id);
+    await approvedUsersCollection().updateOne({ guildId }, { $pull: { userIds: userId } });
+    const approved = (approvedUsersCache.get(guildId) || []).filter((id) => id !== userId);
+    approvedUsersCache.set(guildId, approved);
+    revoked.push(`user **${user.tag}**`);
   }
+  await interaction.reply({
+    content: `${revoked.join(" and ")} can no longer manage theme songs or use /set-theme-gui.`,
+    ephemeral: true,
+  });
 }
 
 const commands = [
@@ -1456,7 +2010,9 @@ const commands = [
     .addUserOption((option) => option.setName("user").setDescription("Set a theme for someone else (managers only)")),
   new SlashCommandBuilder()
     .setName("set-theme-gui")
-    .setDescription("Open the private theme manager for this server"),
+    .setDescription("Open the private theme manager for this server")
+    .setDMPermission(false)
+    .setDefaultMemberPermissions(null),
   new SlashCommandBuilder()
     .setName("theme-cooldown")
     .setDescription("Set the server default theme cooldown")
@@ -1502,6 +2058,7 @@ client.once("ready", async () => {
   try {
     await loadApprovedCaches();
     await registerCommands();
+    getSilenceOgg().catch((error) => console.error("silence ogg:", error.message || error));
   } catch (error) {
     console.error("Startup error:", error);
   }
@@ -1590,7 +2147,20 @@ async function handleSlash(interaction) {
   }
 
   if (commandName === "set-theme-gui") {
-    if (!canManageThemes(interaction.member)) {
+    let member = interaction.member;
+    try {
+      member = await interaction.guild.members.fetch({ user: interaction.user.id, force: true });
+    } catch {
+      /* use the interaction member */
+    }
+    if (!canManageThemes(member)) {
+      console.log("set-theme-gui denied", {
+        userId: snowflake(interaction.user.id),
+        guildId: snowflake(interaction.guild?.id),
+        approvedUsers: approvedUsersCache.get(snowflake(interaction.guild?.id)) || [],
+        approvedRoles: approvedRolesCache.get(snowflake(interaction.guild?.id)) || [],
+        memberRoles: [...memberRoleIds(member)],
+      });
       return interaction.reply({ content: "Only approved managers can open the theme desk.", ephemeral: true });
     }
     if (!themeGui) {
@@ -1599,7 +2169,12 @@ async function handleSlash(interaction) {
     const token = themeGui.mintToken(interaction.user.id, interaction.guild.id);
     const url = `${themeGui.publicUrl}/?t=${token}`;
     return interaction.reply({
-      content: `Theme desk for **${interaction.guild.name}**:\n${url}\nOnly you can see this. The link expires in 2 hours.`,
+      content: `Theme desk for **${interaction.guild.name}**. Only you can see this. The link expires in 2 hours.\n${url}`,
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("Open theme desk").setURL(url),
+        ),
+      ],
       ephemeral: true,
     });
   }
@@ -1642,7 +2217,11 @@ async function handleSlash(interaction) {
     if (player.state.status === AudioPlayerStatus.Idle) {
       return interaction.reply({ content: "Nothing is playing.", ephemeral: true });
     }
-    player.stop();
+    cancelThemeSession(channel.guild.id);
+    player.removeAllListeners("error");
+    player.removeAllListeners(AudioPlayerStatus.Idle);
+    player.removeAllListeners(AudioPlayerStatus.Playing);
+    player.stop(true);
     return interaction.reply({ content: "Skipped.", ephemeral: true });
   }
 }
@@ -1684,44 +2263,39 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
   if (!member || member.user.bot) return;
 
   const guildId = newState.guild.id;
-  const session = getThemeSession(guildId);
-  const botChannelId = botVoiceChannelId(guildId);
 
   if (!newState.channelId) {
-    maybeLeaveIfEmpty(guildId);
+    await enqueueThemeWork(guildId, async () => maybeLeaveIfEmpty(guildId));
     return;
   }
 
-  const newChannel = newState.channel || newState.guild.channels.cache.get(newState.channelId);
-  if (!newChannel || typeof newChannel.isVoiceBased === "function" && !newChannel.isVoiceBased()) return;
-
-  try {
-    const hopping = Boolean(oldState.channelId);
-    if (hopping && botChannelId === oldState.channelId) {
-      const othersLeft = humanVoiceCount(oldState.channel);
-      if (session.playingUserId === member.id || othersLeft === 0) {
-        await maintainConnection(newChannel, getPlayer(guildId));
-        if (session.playingUserId === member.id) return;
+  await enqueueThemeWork(guildId, async () => {
+    try {
+      const liveMember = newState.guild.members.cache.get(member.id) || member;
+      const liveChannel = liveMember.voice?.channel;
+      if (!liveChannel || (typeof liveChannel.isVoiceBased === "function" && !liveChannel.isVoiceBased())) {
+        maybeLeaveIfEmpty(guildId);
+        return;
       }
-    }
 
-    const theme = await getMemberThemeSong(member.id);
-    if (!theme) {
-      maybeLeaveIfEmpty(guildId);
-      return;
-    }
+      const theme = await getMemberThemeSong(member.id);
+      if (!theme) {
+        maybeLeaveIfEmpty(guildId);
+        return;
+      }
 
-    await requestThemePlay(
-      newChannel,
-      theme.url,
-      theme.duration,
-      member.id,
-      theme.lastPlayedAt,
-      userCooldownMinutesFromTheme(theme),
-    );
-  } catch (error) {
-    console.error("Error requesting theme play:", error);
-  }
+      await requestThemePlay(
+        liveChannel,
+        theme.url,
+        theme.duration,
+        member.id,
+        theme.lastPlayedAt,
+        userCooldownMinutesFromTheme(theme),
+      );
+    } catch (error) {
+      console.error("Error requesting theme play:", error);
+    }
+  });
 });
 
 async function syncStoredClipTitles() {
@@ -1774,6 +2348,8 @@ async function main() {
     deleteLibraryClip,
     previewClipAudio,
     previewMemberAudio,
+    importUploadedClip,
+    trimLibraryClip,
     libraryClipKey,
     clearThemeCooldown,
     clampDuration,
