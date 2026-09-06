@@ -1811,6 +1811,7 @@ function playResource(player, stream, opts, onDone) {
 }
 
 function onThemeDone(guildId, generation, completed) {
+  completed = completed === true;
   const session = getThemeSession(guildId);
   if (session.generation !== generation) return;
   if (session.timeoutId) {
@@ -2030,7 +2031,7 @@ async function startThemePlayback({ channel, url, duration, userId }) {
         console.error("No saved clip for", userId, "- refusing live YouTube on join");
         connectP.catch(ignoreConnect);
         session.playingUserId = null;
-        onThemeDone(guildId, generation);
+        onThemeDone(guildId, generation, false);
         return;
       }
       console.log("Playing live SoundCloud theme for", userId, safe);
@@ -2039,7 +2040,7 @@ async function startThemePlayback({ channel, url, duration, userId }) {
       console.error("No saved clip for", userId, "- refusing live YouTube on join");
       connectP.catch(ignoreConnect);
       session.playingUserId = null;
-      onThemeDone(guildId, generation);
+      onThemeDone(guildId, generation, false);
       return;
     }
 
@@ -2074,7 +2075,7 @@ async function startThemePlayback({ channel, url, duration, userId }) {
     playResource(player, stream, playOpts, (completed) => onThemeDone(guildId, generation, completed));
   } catch (error) {
     console.error("Error playing theme song:", error);
-    onThemeDone(guildId, generation);
+    onThemeDone(guildId, generation, false);
   }
 }
 
