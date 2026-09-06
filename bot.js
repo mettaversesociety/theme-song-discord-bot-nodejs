@@ -828,7 +828,10 @@ async function trimLibraryClip(clipId, inPoint, outPoint, { replace = false, tit
     .update(ogg)
     .digest("hex")
     .slice(0, 16);
-  const url = clip.url && !String(clip.url).startsWith("upload:") ? clip.url : "upload://" + id;
+  const url =
+    clip.url && !String(clip.url).startsWith("upload:")
+      ? withStartSeconds(clip.url, newStart)
+      : "upload://" + id;
   await clipsCollection().updateOne(
     { _id: id },
     {
@@ -1098,23 +1101,32 @@ async function setMemberThemeSong(userId, url, duration, username, cooldownMinut
   }
   const sameClip =
     existing &&
-    trackKey(existing.url) === trackKey(url) &&
+    audioBufferFromTheme(existing) &&
     Number(existing.duration) === clippedDuration &&
-    start === parseStartSeconds(existing.url) &&
-    (recordedStart === null || recordedStart === start) &&
-    audioBufferFromTheme(existing);
+    (
+      (existing.clipId && String(existing.url || "") === String(url)) ||
+      (
+        trackKey(existing.url) === trackKey(url) &&
+        start === parseStartSeconds(existing.url) &&
+        (recordedStart === null || recordedStart === start)
+      )
+    );
 
   if (sameClip) {
     const clipId = existing.clipId || libraryClipKey(url, clippedDuration);
     const library = await clipsCollection().findOne({ _id: clipId }, { projection: { title: 1 } });
     const title = baseClipTitle(existing.title || (library && library.title));
+    const keepStart =
+      existing.start != null && Number.isFinite(Number(existing.start))
+        ? Number(existing.start)
+        : start;
     await themesCollection().updateOne(
       { _id: userId },
       {
         $set: {
-          "theme_song.url": url,
+          "theme_song.url": existing.url || url,
           "theme_song.duration": clippedDuration,
-          "theme_song.start": start,
+          "theme_song.start": keepStart,
           "theme_song.username": username || null,
           "theme_song.cooldown": minutes !== 0,
           "theme_song.cooldownMinutes": minutes,

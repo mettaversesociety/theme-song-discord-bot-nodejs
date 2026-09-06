@@ -506,8 +506,10 @@ function startThemeGui(deps) {
       }
 
       if (req.method === "GET" && url.pathname.startsWith("/api/themes/") && url.pathname.endsWith("/audio")) {
-        await requireManager(req, url);
+        const { guild } = await requireManager(req, url);
         const userId = pathUserId(url.pathname, 3);
+        const member = await guild.members.fetch(userId).catch(() => null);
+        if (!member) fail(404, "That user is not in this server.");
         sendAudio(res, await previewMemberAudio(userId));
         return;
       }

@@ -1229,6 +1229,8 @@
 
     const MIN_TRIM = 0.3;
     let trimState = null;
+    let trimLoadId = 0;
+    let trimAbort = null;
 
     function round2(n) { return Math.round(Number(n) * 100) / 100; }
 
@@ -1249,12 +1251,17 @@
     }
 
     function closeTrimmer() {
+      trimLoadId += 1;
+      if (trimAbort) {
+        try { trimAbort.abort(); } catch {}
+        trimAbort = null;
+      }
       stopTrimPlay();
       if (trimState && trimState.ctx) {
         try { trimState.ctx.close(); } catch {}
       }
       trimState = null;
-      trimmer.close();
+      if (trimmer.open) trimmer.close();
     }
 
     function selectionLen() {
@@ -1382,23 +1389,40 @@
 
     async function openTrimmer(clip) {
       if (!clip) return;
+      const loadId = ++trimLoadId;
+      if (trimAbort) {
+        try { trimAbort.abort(); } catch {}
+      }
+      trimAbort = new AbortController();
       stopPreview();
+      stopTrimPlay();
+      if (trimState && trimState.ctx) {
+        try { trimState.ctx.close(); } catch {}
+      }
+      trimState = null;
       $("trimTitle").textContent = "Cut · " + (clip.title || "clip");
       $("trimName").value = clip.title || "";
       $("trimHint").textContent = "Loading waveform…";
       $("trimBusy").hidden = true;
-      trimmer.showModal();
+      if (!trimmer.open) trimmer.showModal();
       try {
         const res = await fetch("/api/clips/" + encodeURIComponent(clip.clipId) + "/audio?v=" + encodeURIComponent(clip.clipId), {
           headers: { "X-Theme-Token": token },
+          signal: trimAbort.signal,
         });
+        if (loadId !== trimLoadId) return;
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body.error || "Could not load clip.");
         }
         const bytes = await res.arrayBuffer();
+        if (loadId !== trimLoadId) return;
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const buffer = await ctx.decodeAudioData(bytes.slice(0));
+        if (loadId !== trimLoadId || !trimmer.open) {
+          try { ctx.close(); } catch {}
+          return;
+        }
         const canvas = $("waveCanvas");
         const columns = Math.max(120, canvas.width);
         trimState = {
@@ -1420,6 +1444,8 @@
         $("trimOut").max = trimState.duration.toFixed(2);
         setTrimPoints(0, trimState.duration);
       } catch (err) {
+        if (loadId !== trimLoadId) return;
+        if (err && err.name === "AbortError") return;
         closeTrimmer();
         showToast(err.message, true);
       }
@@ -1427,6 +1453,11 @@
 
     async function saveTrim(replace) {
       if (!trimState || !trimState.clip) return;
+      const clipId = trimState.clip.clipId;
+      const loadId = trimLoadId;
+      const inPoint = trimState.inPoint;
+      const outPoint = trimState.outPoint;
+      const title = $("trimName").value.trim();
       if (selectionLen() < MIN_TRIM) {
         showToast("Keep at least 0.3 seconds selected.", true);
         return;
@@ -1436,16 +1467,16 @@
       $("trimSaveNew").disabled = true;
       $("trimReplace").disabled = true;
       try {
-        const saved = await api("/api/clips/" + encodeURIComponent(trimState.clip.clipId) + "/trim", {
+        const saved = await api("/api/clips/" + encodeURIComponent(clipId) + "/trim", {
           method: "POST",
           body: JSON.stringify({
-            inPoint: trimState.inPoint,
-            outPoint: trimState.outPoint,
+            inPoint,
+            outPoint,
             replace: Boolean(replace),
-            title: $("trimName").value.trim(),
+            title,
           }),
         });
-        closeTrimmer();
+        if (loadId === trimLoadId) closeTrimmer();
         showToast(saved.replaced
           ? "Replaced the shelf clip. Anyone assigned this cut gets the new edit."
           : "Saved a new cut on the shelf. Assign it when you like.");
@@ -1775,6 +1806,11 @@
     $("trimReplace").addEventListener("click", () => saveTrim(true));
     $("trimForm").addEventListener("submit", (e) => { e.preventDefault(); saveTrim(false); });
     trimmer.addEventListener("close", () => {
+      trimLoadId += 1;
+      if (trimAbort) {
+        try { trimAbort.abort(); } catch {}
+        trimAbort = null;
+      }
       if (trimState) {
         stopTrimPlay();
         if (trimState.ctx) try { trimState.ctx.close(); } catch {}
