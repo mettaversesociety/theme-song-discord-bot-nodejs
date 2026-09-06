@@ -140,6 +140,14 @@ function parseHttpUrl(url) {
       .toLowerCase()
       .replace(/\.$/, "");
     if (!host || /[^a-z0-9.-]/.test(host)) return null;
+    let fromHash = "";
+    if (parsed.hash) {
+      const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+      fromHash = hashParams.get("t") || hashParams.get("start") || "";
+    }
+    if (fromHash && !parsed.searchParams.get("t") && !parsed.searchParams.get("start")) {
+      parsed.searchParams.set("t", fromHash);
+    }
     const rebuilt = new URL(parsed.protocol + "//" + host + parsed.pathname + parsed.search);
     rebuilt.hash = "";
     return rebuilt;
@@ -182,7 +190,8 @@ function uploadClipIdFromUrl(url) {
 
 function withStartSeconds(url, start) {
   try {
-    const parsed = new URL(url);
+    const parsed = parseHttpUrl(url) || new URL(url);
+    if (parsed.username || parsed.password) return url;
     parsed.searchParams.delete("t");
     parsed.searchParams.delete("start");
     parsed.hash = "";
@@ -1127,15 +1136,14 @@ async function setMemberThemeSong(userId, url, duration, username, cooldownMinut
     existing &&
     Number.isFinite(Number(existing.duration)) &&
     Number.isFinite(postedDuration) &&
-    (roundHundredth(existing.duration) === roundHundredth(postedDuration) ||
-      (clampDuration(existing.duration) === clampDuration(postedDuration) &&
-        Math.abs(Number(existing.duration) - postedDuration) < 1));
+    roundHundredth(existing.duration) === roundHundredth(postedDuration);
+  const existingSafe = sanitizedMediaUrl(existing && existing.url) || String((existing && existing.url) || "");
   const sameClip =
     existing &&
     audioBufferFromTheme(existing) &&
     sameAssignedDuration &&
     (
-      (existing.clipId && String(existing.url || "") === String(url)) ||
+      (existing.clipId && existingSafe === String(url)) ||
       (
         trackKey(existing.url) === trackKey(url) &&
         start === parseStartSeconds(existing.url) &&
