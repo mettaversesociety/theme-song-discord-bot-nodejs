@@ -1613,7 +1613,7 @@
       const url = $("url").value.trim();
       const duration = Number($("duration").value);
       if (!originalClip.url) return true;
-      return url !== originalClip.url || duration !== Number(originalClip.duration);
+      return url !== originalClip.url || round2(duration) !== round2(originalClip.duration);
     }
 
     function updateSaveButton() {
