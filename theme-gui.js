@@ -212,6 +212,27 @@ function startThemeGui(deps) {
     return { session, guild, member };
   }
 
+  async function membersInGuild(guild, userIds) {
+    const ids = [...new Set((userIds || []).map(String).filter((id) => SNOWFLAKE_RE.test(id)))];
+    const found = new Map();
+    if (!ids.length) return found;
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      try {
+        const fetched = await guild.members.fetch({ user: chunk });
+        for (const [id, member] of fetched) {
+          if (member && member.user && !member.user.bot) found.set(id, member);
+        }
+      } catch {
+        for (const id of chunk) {
+          const member = guild.members.cache.get(id);
+          if (member && member.user && !member.user.bot) found.set(id, member);
+        }
+      }
+    }
+    return found;
+  }
+
   async function resolveMember(guild, raw) {
     const q = String(raw || "").trim();
     if (!q) fail(400, "Pick a server member.");
@@ -272,14 +293,15 @@ function startThemeGui(deps) {
       if (req.method === "GET" && url.pathname === "/api/themes") {
         const { guild } = await requireManager(req, url);
         const themes = await listThemeSongs();
+        const members = await membersInGuild(guild, themes.map((doc) => doc._id));
         const rows = [];
         for (const doc of themes) {
-          if (!SNOWFLAKE_RE.test(String(doc._id))) continue;
-          const member = guild.members.cache.get(doc._id);
+          const member = members.get(String(doc._id));
+          if (!member) continue;
           const song = doc.theme_song || {};
           rows.push({
             userId: doc._id,
-            username: (member && (member.displayName || member.user.username)) || song.username || doc._id,
+            username: member.displayName || member.user.username,
             url: song.url || "",
             duration: song.duration || defaultDuration,
             cooldownMinutes: userCooldownMinutesFromTheme(song),
@@ -349,19 +371,20 @@ function startThemeGui(deps) {
       if (req.method === "GET" && url.pathname === "/api/clips") {
         const { guild } = await requireManager(req, url);
         const [clips, themes] = await Promise.all([listLibraryClips(), listThemeSongs()]);
+        const members = await membersInGuild(guild, themes.map((doc) => doc._id));
         const rows = [];
         for (const clip of clips) {
           const usedBy = [];
           for (const doc of themes) {
+            const member = members.get(String(doc._id));
+            if (!member) continue;
             const song = doc.theme_song || {};
             if (!song.url) continue;
             const id = song.clipId || libraryClipKey(song.url, song.duration);
             if (id !== clip._id) continue;
-            if (!SNOWFLAKE_RE.test(String(doc._id))) continue;
-            const member = guild.members.cache.get(doc._id);
             usedBy.push({
               userId: doc._id,
-              username: (member && (member.displayName || member.user.username)) || song.username || doc._id,
+              username: member.displayName || member.user.username,
             });
           }
           rows.push({
@@ -397,10 +420,10 @@ function startThemeGui(deps) {
       if (req.method === "POST" && url.pathname.startsWith("/api/clips/") && url.pathname.endsWith("/trim")) {
         await requireManager(req, url);
         if (clipBusy) fail(429, "Already clipping another theme. Wait a moment.");
-        const clipId = pathClipId(url.pathname, 3);
-        const body = await readBody(req);
         clipBusy = true;
         try {
+          const clipId = pathClipId(url.pathname, 3);
+          const body = await readBody(req);
           const saved = await trimLibraryClip(clipId, body.inPoint, body.outPoint, {
             replace: Boolean(body.replace),
             title: body.title,
@@ -434,9 +457,9 @@ function startThemeGui(deps) {
       }
 
       if (req.method === "DELETE" && url.pathname.startsWith("/api/clips/")) {
-        await requireManager(req, url);
+        const { guild } = await requireManager(req, url);
         const clipId = pathClipId(url.pathname, 3);
-        await deleteLibraryClip(clipId);
+        await deleteLibraryClip(clipId, guild.id);
         json(res, 200, { ok: true });
         return;
       }
@@ -452,12 +475,12 @@ function startThemeGui(deps) {
       if (req.method === "POST" && url.pathname === "/api/themes") {
         const { guild } = await requireManager(req, url);
         if (clipBusy) fail(429, "Already clipping another theme. Wait a moment.");
-        const body = await readBody(req);
-        const member = await resolveMember(guild, body.user || body.userId);
-        const duration = clampDuration(body.duration || defaultDuration);
-        const cooldownMinutes = parseCooldownMinutes(body.cooldownMinutes);
         clipBusy = true;
         try {
+          const body = await readBody(req);
+          const member = await resolveMember(guild, body.user || body.userId);
+          const duration = clampDuration(body.duration || defaultDuration);
+          const cooldownMinutes = parseCooldownMinutes(body.cooldownMinutes);
           const saved = await setMemberThemeSong(
             member.id,
             String(body.url || "").trim(),

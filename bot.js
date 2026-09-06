@@ -125,12 +125,56 @@ function effectiveCooldownMs(guildMinutes, userMinutes) {
   return Math.max(0, minutes) * 60 * 1000;
 }
 
+const SNOWFLAKE_RE = /^\d{15,22}$/;
+const UPLOAD_URL_RE = /^upload:\/\/([a-f0-9]{16})$/i;
+
+function httpHostname(url) {
+  if (typeof url !== "string" || !url || url.length > 500) return "";
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+    return String(parsed.hostname || "")
+      .toLowerCase()
+      .replace(/\.$/, "");
+  } catch {
+    return "";
+  }
+}
+
+function hostIsDomain(hostname, domain) {
+  return Boolean(hostname) && (hostname === domain || hostname.endsWith("." + domain));
+}
+
 function isYoutubeUrl(url) {
-  return typeof url === "string" && (url.includes("youtube.com") || url.includes("youtu.be"));
+  const host = httpHostname(url);
+  return hostIsDomain(host, "youtube.com") || hostIsDomain(host, "youtu.be");
 }
 
 function isSoundcloudUrl(url) {
-  return typeof url === "string" && url.includes("soundcloud.com");
+  return hostIsDomain(httpHostname(url), "soundcloud.com");
+}
+
+function isUploadUrl(url) {
+  return typeof url === "string" && UPLOAD_URL_RE.test(url.trim());
+}
+
+function uploadClipIdFromUrl(url) {
+  const match = String(url || "").trim().match(UPLOAD_URL_RE);
+  return match ? match[1].toLowerCase() : "";
+}
+
+function withStartSeconds(url, start) {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.delete("t");
+    parsed.searchParams.delete("start");
+    parsed.hash = "";
+    const t = roundHundredth(start);
+    if (t > 0) parsed.searchParams.set("t", String(t));
+    return parsed.toString();
+  } catch {
+    return url;
+  }
 }
 
 function parseTimestampToSeconds(raw) {
@@ -246,6 +290,20 @@ function libraryClipKey(url, duration) {
   return crypto
     .createHash("sha1")
     .update(`${canonicalClipUrl(url)}|${start}|${clampDuration(duration)}`)
+    .digest("hex")
+    .slice(0, 16);
+}
+
+function replacementClipId(clip, newStart, length) {
+  const url = String((clip && clip.url) || "");
+  const start = roundHundredth(newStart);
+  const dur = roundHundredth(length);
+  const origin = url.startsWith("upload:")
+    ? String((clip && (clip.parentClipId || clip._id)) || url)
+    : canonicalClipUrl(url);
+  return crypto
+    .createHash("sha1")
+    .update(`trim-id|${origin}|${start}|${dur}`)
     .digest("hex")
     .slice(0, 16);
 }
@@ -713,32 +771,56 @@ async function trimLibraryClip(clipId, inPoint, outPoint, { replace = false, tit
   const resolvedTitle = cleanTitle(title) || cleanTitle(clip.title) || "Clip";
   const newStart = roundHundredth((Number(clip.start) || 0) + start);
   if (replace) {
-    await clipsCollection().updateOne(
-      { _id: clipId },
-      {
-        $set: {
-          audio: new Binary(ogg),
-          audioFormat: "ogg",
-          duration: length,
-          start: newStart,
-          title: resolvedTitle,
-        },
-      },
-    );
-    await themesCollection().updateMany(
-      { "theme_song.clipId": clipId },
-      {
-        $set: {
-          "theme_song.audio": new Binary(ogg),
-          "theme_song.audioFormat": "ogg",
-          "theme_song.duration": length,
-          "theme_song.start": newStart,
-          "theme_song.title": resolvedTitle,
-        },
-      },
-    );
-    console.log("replaced trimmed clip", clipId, length, "s");
-    return { clipId, title: resolvedTitle, duration: length, start: newStart, replaced: true, url: clip.url || "" };
+    const storedUrl = String(clip.url || "");
+    const uploaded = storedUrl.startsWith("upload:");
+    const newId = replacementClipId(clip, newStart, length);
+    const newUrl = uploaded ? "upload://" + newId : withStartSeconds(storedUrl, newStart);
+    const audio = new Binary(ogg);
+    const clipSet = {
+      url: newUrl,
+      duration: length,
+      start: newStart,
+      title: resolvedTitle,
+      audio,
+      audioFormat: "ogg",
+      source: clip.source || (uploaded ? "upload" : "trim"),
+      parentClipId: clip.parentClipId || clipId,
+    };
+    const themeSet = {
+      "theme_song.url": newUrl,
+      "theme_song.audio": audio,
+      "theme_song.audioFormat": "ogg",
+      "theme_song.duration": length,
+      "theme_song.start": newStart,
+      "theme_song.title": resolvedTitle,
+      "theme_song.clipId": newId,
+    };
+    if (newId === clipId) {
+      await clipsCollection().updateOne({ _id: clipId }, { $set: clipSet });
+      await themesCollection().updateMany({ "theme_song.clipId": clipId }, { $set: themeSet });
+    } else {
+      await clipsCollection().updateOne(
+        { _id: newId },
+        { $set: clipSet, $setOnInsert: { createdAt: new Date() } },
+        { upsert: true },
+      );
+      await themesCollection().updateMany({ "theme_song.clipId": clipId }, { $set: themeSet });
+      const dangling = await themesCollection()
+        .find(
+          { "theme_song.url": { $exists: true } },
+          { projection: { "theme_song.url": 1, "theme_song.duration": 1, "theme_song.clipId": 1 } },
+        )
+        .toArray();
+      for (const doc of dangling) {
+        if (!themeUsesLibraryClip(doc.theme_song, clipId)) continue;
+        if (doc.theme_song && doc.theme_song.clipId && doc.theme_song.clipId !== clipId) continue;
+        await themesCollection().updateOne({ _id: doc._id }, { $set: themeSet });
+      }
+      await clipsCollection().deleteOne({ _id: clipId });
+      removeDiskClipFiles(clipId);
+    }
+    console.log("replaced trimmed clip", clipId, "->", newId, length, "s");
+    return { clipId: newId, title: resolvedTitle, duration: length, start: newStart, replaced: true, url: newUrl };
   }
   const id = crypto
     .createHash("sha1")
@@ -995,11 +1077,15 @@ function normalizeUserCooldownMinutes(value) {
 }
 
 async function setMemberThemeSong(userId, url, duration, username, cooldownMinutes = null) {
-  if (!isYoutubeUrl(url) && !isSoundcloudUrl(url)) {
-    throw new Error("Provide a valid YouTube or SoundCloud URL.");
-  }
   if (typeof url !== "string" || url.length > 500) {
     throw new Error("URL is too long.");
+  }
+  url = url.trim();
+  if (isUploadUrl(url)) {
+    return assignLibraryClip(uploadClipIdFromUrl(url), userId, username, cooldownMinutes);
+  }
+  if (!isYoutubeUrl(url) && !isSoundcloudUrl(url)) {
+    throw new Error("Provide a valid YouTube or SoundCloud URL.");
   }
   const clippedDuration = clampDuration(duration);
   const minutes = normalizeUserCooldownMinutes(cooldownMinutes);
@@ -1286,7 +1372,31 @@ function removeDiskClipFiles(clipId) {
   }
 }
 
-async function deleteLibraryClip(clipId) {
+async function guildUserIdSet(guildId, userIds) {
+  const ids = [...new Set((userIds || []).map(String).filter((id) => SNOWFLAKE_RE.test(id)))];
+  const out = new Set();
+  if (!guildId || !ids.length) return out;
+  let guild;
+  try {
+    guild = await client.guilds.fetch(guildId);
+  } catch {
+    return out;
+  }
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    try {
+      const fetched = await guild.members.fetch({ user: chunk });
+      for (const id of fetched.keys()) out.add(id);
+    } catch {
+      for (const id of chunk) {
+        if (guild.members.cache.has(id)) out.add(id);
+      }
+    }
+  }
+  return out;
+}
+
+async function deleteLibraryClip(clipId, guildId) {
   const clip = await clipsCollection().findOne({ _id: clipId }, { projection: { audio: 0 } });
   let unassigned = 0;
   const themes = await themesCollection()
@@ -1295,12 +1405,30 @@ async function deleteLibraryClip(clipId) {
       { projection: { "theme_song.url": 1, "theme_song.duration": 1, "theme_song.clipId": 1, "theme_song.start": 1 } },
     )
     .toArray();
-  for (const doc of themes) {
-    if (!themeUsesLibraryClip(doc.theme_song, clipId)) continue;
+  const using = themes.filter((doc) => themeUsesLibraryClip(doc.theme_song, clipId));
+  const allow = guildId ? await guildUserIdSet(guildId, using.map((doc) => doc._id)) : null;
+  for (const doc of using) {
+    if (allow && !allow.has(String(doc._id))) continue;
     const filter = { _id: doc._id };
     if (doc.theme_song && doc.theme_song.clipId) filter["theme_song.clipId"] = clipId;
     const cleared = await themesCollection().updateOne(filter, { $unset: { theme_song: "" } });
     if (cleared.modifiedCount) unassigned += 1;
+  }
+  const leftover = await themesCollection()
+    .find(
+      { "theme_song.url": { $exists: true } },
+      { projection: { "theme_song.url": 1, "theme_song.duration": 1, "theme_song.clipId": 1 } },
+    )
+    .toArray();
+  if (leftover.some((doc) => themeUsesLibraryClip(doc.theme_song, clipId))) {
+    console.log(
+      "unassigned library clip in guild",
+      clipId,
+      "guild=" + (guildId || "all"),
+      "unassigned=" + unassigned,
+      "kept-global-users",
+    );
+    return;
   }
   const deleted = await clipsCollection().deleteOne({ _id: clipId });
   removeDiskClipFiles(clipId);
@@ -2352,7 +2480,9 @@ async function handleSlash(interaction) {
 
 async function handleButton(interaction) {
   const userId = interaction.user.id;
-  const [action, title] = interaction.customId.split("-");
+  const dash = String(interaction.customId || "").indexOf("-");
+  const action = dash === -1 ? interaction.customId : interaction.customId.slice(0, dash);
+  const title = dash === -1 ? "" : interaction.customId.slice(dash + 1);
   if (!soundboardState[userId]) {
     const initial = await getSoundboard(0);
     soundboardState[userId] = { page: initial.currentPage, totalPages: initial.totalPages };
