@@ -708,7 +708,7 @@
       <div class="grid-2">
         <div>
           <label for="duration">Duration (seconds)</label>
-          <input id="duration" class="field" type="number" min="1" max="20" value="10" inputmode="numeric" />
+          <input id="duration" class="field" type="number" min="1" max="20" step="0.01" value="10" inputmode="decimal" />
         </div>
         <div>
           <label for="cooldownMode">Cooldown after play</label>
@@ -1571,6 +1571,7 @@
       $("duration").value = row ? row.duration : meta.defaultDuration;
       $("duration").min = meta.minDuration ?? 1;
       $("duration").max = meta.maxDuration ?? 20;
+      $("duration").step = "0.01";
       originalClip = { url: row ? row.url : "", duration: row ? Number(row.duration) : null };
       setEditorCooldown(row ? row.cooldownMinutes : null);
       updateSaveButton();

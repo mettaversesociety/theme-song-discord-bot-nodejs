@@ -1090,6 +1090,7 @@ async function setMemberThemeSong(userId, url, duration, username, cooldownMinut
   if (!isYoutubeUrl(url) && !isSoundcloudUrl(url)) {
     throw new Error("Provide a valid YouTube or SoundCloud URL.");
   }
+  const postedDuration = Number(duration);
   const clippedDuration = clampDuration(duration);
   const minutes = normalizeUserCooldownMinutes(cooldownMinutes);
   const start = parseStartSeconds(url);
@@ -1099,10 +1100,17 @@ async function setMemberThemeSong(userId, url, duration, username, cooldownMinut
     const storedMeta = await clipsCollection().findOne({ _id: existing.clipId }, { projection: { start: 1 } });
     if (storedMeta && storedMeta.start != null) recordedStart = Number(storedMeta.start);
   }
+  const sameAssignedDuration =
+    existing &&
+    Number.isFinite(Number(existing.duration)) &&
+    Number.isFinite(postedDuration) &&
+    (roundHundredth(existing.duration) === roundHundredth(postedDuration) ||
+      (clampDuration(existing.duration) === clampDuration(postedDuration) &&
+        Math.abs(Number(existing.duration) - postedDuration) < 1));
   const sameClip =
     existing &&
     audioBufferFromTheme(existing) &&
-    Number(existing.duration) === clippedDuration &&
+    sameAssignedDuration &&
     (
       (existing.clipId && String(existing.url || "") === String(url)) ||
       (
@@ -1120,12 +1128,15 @@ async function setMemberThemeSong(userId, url, duration, username, cooldownMinut
       existing.start != null && Number.isFinite(Number(existing.start))
         ? Number(existing.start)
         : start;
+    const keepDuration = Number.isFinite(Number(existing.duration))
+      ? Number(existing.duration)
+      : clippedDuration;
     await themesCollection().updateOne(
       { _id: userId },
       {
         $set: {
           "theme_song.url": existing.url || url,
-          "theme_song.duration": clippedDuration,
+          "theme_song.duration": keepDuration,
           "theme_song.start": keepStart,
           "theme_song.username": username || null,
           "theme_song.cooldown": minutes !== 0,
@@ -1135,7 +1146,7 @@ async function setMemberThemeSong(userId, url, duration, username, cooldownMinut
         },
       },
     );
-    return { duration: clippedDuration, clipped: false };
+    return { duration: keepDuration, clipped: false };
   }
 
   const library = await clipsCollection().findOne({ _id: libraryClipKey(url, clippedDuration) });

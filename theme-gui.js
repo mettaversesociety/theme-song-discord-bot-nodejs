@@ -479,12 +479,12 @@ function startThemeGui(deps) {
         try {
           const body = await readBody(req);
           const member = await resolveMember(guild, body.user || body.userId);
-          const duration = clampDuration(body.duration || defaultDuration);
+          const duration = Number(body.duration);
           const cooldownMinutes = parseCooldownMinutes(body.cooldownMinutes);
           const saved = await setMemberThemeSong(
             member.id,
             String(body.url || "").trim(),
-            duration,
+            Number.isFinite(duration) ? duration : defaultDuration,
             member.user.username,
             cooldownMinutes,
           );
