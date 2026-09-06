@@ -1816,6 +1816,7 @@ function onThemeDone(guildId, generation, completed) {
   const userId = session.playingUserId;
   session.playingUserId = null;
   session.clipReplay = null;
+  session.recovering = false;
   session.clipElapsedMs = 0;
   session.clipPlayingSince = 0;
   if (!completed) {
@@ -1980,6 +1981,7 @@ async function startThemePlayback({ channel, url, duration, userId }) {
   session.generation += 1;
   const generation = session.generation;
   session.playingUserId = userId;
+  session.recovering = false;
   session.clipElapsedMs = 0;
   session.clipPlayingSince = 0;
 
