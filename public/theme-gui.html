@@ -432,6 +432,25 @@
       font-size: 12px;
       font-family: var(--mono);
     }
+    .trim-vol {
+      margin-top: 12px;
+    }
+    .trim-vol .row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .trim-vol input[type="range"] {
+      flex: 1;
+      accent-color: var(--gold-bright);
+    }
+    .trim-vol strong {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--gold-bright);
+      min-width: 4.5ch;
+      text-align: right;
+    }
     .nudge button:hover { border-color: var(--gold); }
     dialog::backdrop { background: rgba(10, 6, 4, 0.78); backdrop-filter: blur(2px); }
     .dlg { padding: 26px 26px 22px; }
@@ -798,6 +817,14 @@
       </div>
       <label for="trimName" style="margin-top:12px">Title</label>
       <input id="trimName" class="field" maxlength="200" />
+      <div class="trim-vol">
+        <label for="trimVol">Volume</label>
+        <div class="row">
+          <input id="trimVol" type="range" min="25" max="400" step="5" value="100" />
+          <strong id="trimVolLabel">100%</strong>
+        </div>
+        <p class="hint" style="margin:6px 0 0">100% is this clip as saved. Raise it if Discord is quieter than YouTube. Play the selection to hear the change before you save.</p>
+      </div>
       <div class="dlg-actions">
         <button class="btn btn-primary" id="trimPlay" type="button">Play selection</button>
         <button class="btn" id="trimSaveNew" type="submit">Save as new cut</button>
@@ -1246,6 +1273,7 @@
       }
       trimState.playing = false;
       trimState.playhead = null;
+      trimState.gain = null;
       $("trimPlay").textContent = "Play selection";
       drawWave();
     }
@@ -1351,6 +1379,19 @@
       return round2(Math.max(0, Math.min(trimState.duration, t)));
     }
 
+    function trimVolumeMul() {
+      const n = Number($("trimVol").value);
+      if (!Number.isFinite(n)) return 1;
+      return Math.min(4, Math.max(0.25, n / 100));
+    }
+
+    function setTrimVolumeLabel() {
+      $("trimVolLabel").textContent = Math.round(Number($("trimVol").value) || 100) + "%";
+      if (trimState && trimState.gain) {
+        try { trimState.gain.gain.value = trimVolumeMul(); } catch {}
+      }
+    }
+
     function playTrimSelection() {
       if (!trimState || !trimState.buffer || !trimState.ctx) return;
       if (trimState.playing) {
@@ -1361,7 +1402,10 @@
       if (ctx.state === "suspended") ctx.resume();
       const source = ctx.createBufferSource();
       source.buffer = trimState.buffer;
-      source.connect(ctx.destination);
+      const gain = ctx.createGain();
+      gain.gain.value = trimVolumeMul();
+      source.connect(gain);
+      gain.connect(ctx.destination);
       const startAt = trimState.inPoint;
       const len = selectionLen();
       const begun = ctx.currentTime;
@@ -1370,6 +1414,7 @@
       };
       source.start(0, startAt, len);
       trimState.source = source;
+      trimState.gain = gain;
       trimState.playing = true;
       trimState.playOrigin = begun;
       $("trimPlay").textContent = "Stop";
@@ -1402,6 +1447,8 @@
       trimState = null;
       $("trimTitle").textContent = "Cut · " + (clip.title || "clip");
       $("trimName").value = clip.title || "";
+      $("trimVol").value = 100;
+      setTrimVolumeLabel();
       $("trimHint").textContent = "Loading waveform…";
       $("trimBusy").hidden = true;
       if (!trimmer.open) trimmer.showModal();
@@ -1438,6 +1485,7 @@
           raf: 0,
           playhead: null,
           drag: null,
+          gain: null,
         };
         $("trimHint").textContent = "Drag the gold region to set in and out. Times are in seconds, down to 0.01. This edits the saved clip — no YouTube round-trip.";
         $("trimIn").max = trimState.duration.toFixed(2);
@@ -1458,6 +1506,7 @@
       const inPoint = trimState.inPoint;
       const outPoint = trimState.outPoint;
       const title = $("trimName").value.trim();
+      const volume = trimVolumeMul();
       if (selectionLen() < MIN_TRIM) {
         showToast("Keep at least 0.3 seconds selected.", true);
         return;
@@ -1474,6 +1523,7 @@
             outPoint,
             replace: Boolean(replace),
             title,
+            volume,
           }),
         });
         if (loadId === trimLoadId) closeTrimmer();
@@ -1802,6 +1852,7 @@
         else setTrimPoints(trimState.inPoint, trimState.outPoint + delta);
       };
     });
+    $("trimVol").addEventListener("input", setTrimVolumeLabel);
     $("trimPlay").addEventListener("click", playTrimSelection);
     $("trimCancel").addEventListener("click", closeTrimmer);
     $("trimReplace").addEventListener("click", () => saveTrim(true));

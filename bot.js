@@ -737,10 +737,18 @@ async function importUploadedClip({ audioBuf, filename, title, duration, start }
   return { clipId: id, title: resolvedTitle, duration: clippedDuration, start: startSec, url };
 }
 
-async function sliceThemeOgg(inputBuf, start, length) {
+function clampTrimVolume(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  if (n > 4 && n <= 400) return Math.min(4, Math.max(0.25, Math.round(n) / 100));
+  return Math.min(4, Math.max(0.25, Math.round(n * 100) / 100));
+}
+
+async function sliceThemeOgg(inputBuf, start, length, volume = 1) {
   if (!inputBuf || inputBuf.length < 1000) {
     throw Object.assign(new Error("That clip has no audio to edit."), { status: 404 });
   }
+  const vol = clampTrimVolume(volume);
   const ogg = await spawnStdoutBuffer(
     ffmpegPath,
     [
@@ -753,6 +761,8 @@ async function sliceThemeOgg(inputBuf, start, length) {
       String(start),
       "-t",
       String(length),
+      "-filter:a",
+      `volume=${vol}`,
       "-c:a",
       "libopus",
       "-ar",
@@ -774,7 +784,7 @@ async function sliceThemeOgg(inputBuf, start, length) {
   return ogg;
 }
 
-async function trimLibraryClip(clipId, inPoint, outPoint, { replace = false, title } = {}) {
+async function trimLibraryClip(clipId, inPoint, outPoint, { replace = false, title, volume = 1 } = {}) {
   const { clip, buf } = await resolveClipAudio(clipId);
   if (!buf) throw Object.assign(new Error("That clip is not in the library."), { status: 404 });
   const sourceDur = Math.max(Number(clip.duration) || 0, 0.3);
@@ -789,7 +799,7 @@ async function trimLibraryClip(clipId, inPoint, outPoint, { replace = false, tit
   }
   let ogg;
   try {
-    ogg = await sliceThemeOgg(buf, start, length);
+    ogg = await sliceThemeOgg(buf, start, length, volume);
   } catch (error) {
     if (error && error.status) throw error;
     throw Object.assign(new Error("Could not cut that selection."), { status: 400 });

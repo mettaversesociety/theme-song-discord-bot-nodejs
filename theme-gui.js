@@ -427,6 +427,7 @@ function startThemeGui(deps) {
           const saved = await trimLibraryClip(clipId, body.inPoint, body.outPoint, {
             replace: Boolean(body.replace),
             title: body.title,
+            volume: body.volume,
           });
           json(res, 200, saved);
         } finally {
