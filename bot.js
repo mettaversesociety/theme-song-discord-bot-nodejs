@@ -40,6 +40,8 @@ const MIN_DURATION = 1;
 const MAX_DURATION = 20;
 const DEFAULT_DURATION = 10;
 const DEFAULT_VOLUME = 0.4;
+const MIN_TRIM_VOLUME = 0.25;
+const MAX_TRIM_VOLUME = 4;
 const SPAWN_TIMEOUT_MS = 90_000;
 const YT_DLP_BIN = path.join(__dirname, "node_modules/@distube/yt-dlp/bin/yt-dlp");
 const YT_COOKIES = path.join(__dirname, "youtube-cookies.txt");
@@ -88,6 +90,12 @@ function roundHundredth(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
   return Math.round(n * 100) / 100;
+}
+
+function clampTrimVolume(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(MAX_TRIM_VOLUME, Math.max(MIN_TRIM_VOLUME, roundHundredth(n)));
 }
 
 function playDurationMs(value) {
@@ -737,13 +745,6 @@ async function importUploadedClip({ audioBuf, filename, title, duration, start }
   return { clipId: id, title: resolvedTitle, duration: clippedDuration, start: startSec, url };
 }
 
-function clampTrimVolume(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 1;
-  if (n > 4 && n <= 400) return Math.min(4, Math.max(0.25, Math.round(n) / 100));
-  return Math.min(4, Math.max(0.25, Math.round(n * 100) / 100));
-}
-
 async function sliceThemeOgg(inputBuf, start, length, volume = 1) {
   if (!inputBuf || inputBuf.length < 1000) {
     throw Object.assign(new Error("That clip has no audio to edit."), { status: 404 });
@@ -791,6 +792,7 @@ async function trimLibraryClip(clipId, inPoint, outPoint, { replace = false, tit
   const start = roundHundredth(Math.max(0, Number(inPoint) || 0));
   const end = roundHundredth(Math.min(sourceDur + 0.05, Number(outPoint)));
   const length = roundHundredth(end - start);
+  const vol = clampTrimVolume(volume);
   if (!Number.isFinite(end) || length < 0.3) {
     throw Object.assign(new Error("Mark an in and out at least 0.3 seconds apart."), { status: 400 });
   }
@@ -799,7 +801,7 @@ async function trimLibraryClip(clipId, inPoint, outPoint, { replace = false, tit
   }
   let ogg;
   try {
-    ogg = await sliceThemeOgg(buf, start, length, volume);
+    ogg = await sliceThemeOgg(buf, start, length, vol);
   } catch (error) {
     if (error && error.status) throw error;
     throw Object.assign(new Error("Could not cut that selection."), { status: 400 });
@@ -855,12 +857,12 @@ async function trimLibraryClip(clipId, inPoint, outPoint, { replace = false, tit
       await clipsCollection().deleteOne({ _id: clipId });
       removeDiskClipFiles(clipId);
     }
-    console.log("replaced trimmed clip", clipId, "->", newId, length, "s");
+    console.log("replaced trimmed clip", clipId, "->", newId, length, "s", "vol=" + vol);
     return { clipId: newId, title: resolvedTitle, duration: length, start: newStart, replaced: true, url: newUrl };
   }
   const id = crypto
     .createHash("sha1")
-    .update(`trim|${clipId}|${start}|${length}|`)
+    .update(`trim|${clipId}|${start}|${length}|${vol}|`)
     .update(ogg)
     .digest("hex")
     .slice(0, 16);
@@ -885,7 +887,7 @@ async function trimLibraryClip(clipId, inPoint, outPoint, { replace = false, tit
     },
     { upsert: true },
   );
-  console.log("saved trimmed clip", id, "from", clipId, length, "s");
+  console.log("saved trimmed clip", id, "from", clipId, length, "s", "vol=" + vol);
   return { clipId: id, title: resolvedTitle, duration: length, start: newStart, replaced: false, url };
 }
 

@@ -435,7 +435,7 @@
     .trim-vol {
       margin-top: 12px;
     }
-    .trim-vol .row {
+    .trim-vol-row {
       display: flex;
       align-items: center;
       gap: 12px;
@@ -819,11 +819,11 @@
       <input id="trimName" class="field" maxlength="200" />
       <div class="trim-vol">
         <label for="trimVol">Volume</label>
-        <div class="row">
+        <div class="trim-vol-row">
           <input id="trimVol" type="range" min="25" max="400" step="5" value="100" />
           <strong id="trimVolLabel">100%</strong>
         </div>
-        <p class="hint" style="margin:6px 0 0">100% is this clip as saved. Raise it if Discord is quieter than YouTube. Play the selection to hear the change before you save.</p>
+        <p class="hint">100% is this clip as saved. Raise it if Discord is quieter than YouTube.</p>
       </div>
       <div class="dlg-actions">
         <button class="btn btn-primary" id="trimPlay" type="button">Play selection</button>
@@ -1255,6 +1255,9 @@
     }
 
     const MIN_TRIM = 0.3;
+    const TRIM_VOL_PCT_MIN = 25;
+    const TRIM_VOL_PCT_MAX = 400;
+    const TRIM_VOL_PCT_DEFAULT = 100;
     let trimState = null;
     let trimLoadId = 0;
     let trimAbort = null;
@@ -1271,9 +1274,12 @@
         cancelAnimationFrame(trimState.raf);
         trimState.raf = 0;
       }
+      if (trimState.gain) {
+        try { trimState.gain.disconnect(); } catch {}
+        trimState.gain = null;
+      }
       trimState.playing = false;
       trimState.playhead = null;
-      trimState.gain = null;
       $("trimPlay").textContent = "Play selection";
       drawWave();
     }
@@ -1380,16 +1386,25 @@
     }
 
     function trimVolumeMul() {
-      const n = Number($("trimVol").value);
-      if (!Number.isFinite(n)) return 1;
-      return Math.min(4, Math.max(0.25, n / 100));
+      const pct = Number($("trimVol").value);
+      if (!Number.isFinite(pct)) return 1;
+      const clamped = Math.min(TRIM_VOL_PCT_MAX, Math.max(TRIM_VOL_PCT_MIN, pct));
+      return round2(clamped / 100);
     }
 
     function setTrimVolumeLabel() {
-      $("trimVolLabel").textContent = Math.round(Number($("trimVol").value) || 100) + "%";
+      $("trimVolLabel").textContent = Math.round(trimVolumeMul() * 100) + "%";
       if (trimState && trimState.gain) {
         try { trimState.gain.gain.value = trimVolumeMul(); } catch {}
       }
+    }
+
+    function resetTrimVolume() {
+      const slider = $("trimVol");
+      slider.min = TRIM_VOL_PCT_MIN;
+      slider.max = TRIM_VOL_PCT_MAX;
+      slider.value = TRIM_VOL_PCT_DEFAULT;
+      setTrimVolumeLabel();
     }
 
     function playTrimSelection() {
@@ -1447,8 +1462,7 @@
       trimState = null;
       $("trimTitle").textContent = "Cut · " + (clip.title || "clip");
       $("trimName").value = clip.title || "";
-      $("trimVol").value = 100;
-      setTrimVolumeLabel();
+      resetTrimVolume();
       $("trimHint").textContent = "Loading waveform…";
       $("trimBusy").hidden = true;
       if (!trimmer.open) trimmer.showModal();
